@@ -1,24 +1,31 @@
 %include "io.inc"
 
+
+%define DEBUG           1
+
 %macro PRINT_FILE 0 
     pushad
     mov dword[counter], 1
-    NEWLINE
+    %if DEBUG
+        NEWLINE
+    %endif
     PRINT_STRING [search + 44]
     NEWLINE
     popad
 %endmacro
 
 %macro PRINT_TRACE 0 
-    pushad
-    PRINT_DEC    4, [counter]
-    PRINT_STRING ": "
-    PRINT_HEX    4, esp
-    PRINT_STRING "  "
-    PRINT_HEX    4, eax
-    NEWLINE
-    inc dword[counter]
-    popad
+    %if DEBUG 
+        pushad
+        PRINT_DEC    4, [counter]
+        PRINT_STRING ": "
+        PRINT_HEX    4, esp
+        PRINT_STRING "  "
+        PRINT_HEX    4, eax
+        NEWLINE
+        inc dword[counter]
+        popad
+    %endif
 %endmacro
 
 NULL equ                0
