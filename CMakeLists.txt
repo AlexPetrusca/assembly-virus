@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.6)
-project(export)
+project(Assembly)
 
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 set(SOURCE_FILES main.c)
-add_executable(export ${SOURCE_FILES})
+add_executable(Assembly ${SOURCE_FILES})

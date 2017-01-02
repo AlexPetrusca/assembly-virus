@@ -48,19 +48,20 @@ int main() {
 
     int functionToFind = 0x79e4b02e;
 
-    int p = addressOfNames;
-
-    for (int i = 0; i < nFunctions; i++) {
-        char *name = *(int *) p + kernelAddr;
-        int h = hash(name);
-        //printf("%s - %08x\n", (char*)name, h);
-        if (h == functionToFind) {
-            short ordinal = *(short *) (addressOfOrdinals + i * 2);
-            int address = *(int *) (addressOfFunctions + ordinal * 4);
-            printf("Address of %s is %08x", name, address + kernelAddr);
-            break;
+    for(int y = 0; y < 200; y++) {
+        int p = addressOfNames;
+        for (int i = 0; i < nFunctions; i++) {
+            char *name = *(int *) p + kernelAddr;
+            int h = hash(name);
+            //printf("%s - %08x\n", (char*)name, h);
+            if (h == functionToFind) {
+                short ordinal = *(short *) (addressOfOrdinals + i * 2);
+                int address = *(int *) (addressOfFunctions + ordinal * 4);
+                printf("Address of %s is %08x", name, address + kernelAddr);
+                break;
+            }
+            p += 4;
         }
-        p += 4;
     }
 
 /*
