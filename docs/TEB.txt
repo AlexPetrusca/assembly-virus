@@ -1,0 +1,53 @@
+Position   Length   Versions    Description
+
+FS:[0x00]  4        NT, 9x      Current Structured Exception Handling (SEH) frame
+FS:[0x04]  4        NT, 9x      Stack Base / Bottom of stack (high address)
+FS:[0x08]  4        NT, 9x      Stack Limit / Ceiling of stack (low address)
+FS:[0x0C]  4        NT          SubSystemTib
+FS:[0x10]  4        NT          Fiber data
+FS:[0x14]  4        NT, 9x      Arbitrary data slot
+FS:[0x18]  4        NT, 9x      Linear address of TEB
+---- End of NT subsystem independent part ----
+FS:[0x1C]  4        NT          Environment Pointer
+FS:[0x20]  4        NT          Process ID (in some windows distributions this field is used as 'DebugContext')
+FS:[0x24]  4        NT          Current thread ID
+FS:[0x28]  4        NT          Active RPC Handle
+FS:[0x2C]  4        NT, 9x      Linear address of the thread-local storage array
+FS:[0x30]  4        NT          Linear address of PEB (Process Environment Block)
+FS:[0x34]  4        NT          Last error number
+FS:[0x38]  4        NT          Count of owned critical sections
+FS:[0x3C]  4        NT          Address of CSR Client Thread
+FS:[0x40]  4        NT          Win32 Thread Information
+FS:[0x44]  124      NT, Wine    Win32 client information (NT), user32 private data (Wine),
+                                0x60 = LastError (Win95), 0x74 = LastError (WinME)
+FS:[0xC0]  4        NT          Reserved for Wow64. Contains a pointer to FastSysCall in Wow64.
+FS:[0xC4]  4        NT          Current Locale
+FS:[0xC8]  4        NT          FP Software Status Register
+FS:[0xCC]  216      NT, Wine    Reserved for OS (NT), kernel32 private data (Wine).
+                                herein: FS:[0x124] 4 NT Pointer to KTHREAD (ETHREAD) structure
+FS:[0x1A4]  4       NT          Exception code
+FS:[0x1A8]  18      NT          Activation context stack
+FS:[0x1BC]  24      NT, Wine    Spare bytes (NT), ntdll private data (Wine)
+FS:[0x1D4]  40      NT, Wine    Reserved for OS (NT), ntdll private data (Wine)
+FS:[0x1FC]  1248    NT, Wine    GDI TEB Batch (OS), vm86 private data (Wine)
+FS:[0x6DC]  4       NT          GDI Region
+FS:[0x6E0]  4       NT          GDI Pen
+FS:[0x6E4]  4       NT          GDI Brush
+FS:[0x6E8]  4       NT          Real Process ID
+FS:[0x6EC]  4       NT          Real Thread ID
+FS:[0x6F0]  4       NT          GDI cached process handle
+FS:[0x6F4]  4       NT          GDI client process ID (PID)
+FS:[0x6F8]  4       NT          GDI client thread ID (TID)
+FS:[0x6FC]  4       NT          GDI thread locale information
+FS:[0x700]  20      NT          Reserved for user application
+FS:[0x714]  1248    NT          Reserved for GL
+FS:[0xBF4]  4       NT          Last Status Value
+FS:[0xBF8]  532     NT          Static UNICODE_STRING buffer
+FS:[0xE0C]  4       NT          Pointer to deallocation stack
+FS:[0xE10]  256     NT          TLS slots, 4 byte per slot
+FS:[0xF10]  8       NT          TLS links (LIST_ENTRY structure)
+FS:[0xF18]  4       NT          VDM
+FS:[0xF1C]  4       NT          Reserved for RPC
+FS:[0xF28]  4       NT          Thread error mode (RtlSetThreadErrorMode)
+
+Info from https://en.wikipedia.org/wiki/Win32_Thread_Information_Block

@@ -1,0 +1,13 @@
+typedef struct _IMAGE_EXPORT_DIRECTORY {
+  (0x00) DWORD Characteristics;
+  (0x04) DWORD TimeDateStamp;
+  (0x08) WORD MajorVersion;
+  (0x0a) WORD MinorVersion;
+  (0x0c) DWORD Name;
+  (0x10) DWORD Base;
+  (0x14) DWORD NumberOfFunctions;
+  (0x18) DWORD NumberOfNames;
+  (0x1c) DWORD AddressOfFunctions;
+  (0x20) DWORD AddressOfNames;
+  (0x24) DWORD AddressOfNameOrdinals;
+}

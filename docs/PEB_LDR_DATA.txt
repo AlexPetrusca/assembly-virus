@@ -1,0 +1,38 @@
+typedef struct _PEB_LDR_DATA {
+  (0x00) INT        Length
+  (0x04) BYTE       Initialized[4]
+  (0x08) INT        SsHandle
+  (0x0c) LIST_ENTRY.FLink InLoadOrderModuleList
+  (0x10) LIST_ENTRY.BLink InLoadOrderModuleList
+  (0x14) LIST_ENTRY.FLink InMemoryOrderModuleList // The head of a doubly-linked list that contains the loaded modules
+                                                  // for the process. Each item in the list is a pointer to an
+                                                  // LDR_DATA_TABLE_ENTRY structure.
+  (0x18) LIST_ENTRY.BLink InMemoryOrderModuleList
+  (0x1c) LIST_ENTRY.FLink InInitOrderModuleList
+  (0x20) LIST_ENTRY.BLink InInitOrderModuleList
+
+  // there is more stuff here
+} PEB_LDR_DATA, *PPEB_LDR_DATA;
+
+typedef struct _LIST_ENTRY {
+   (0x00) struct _LIST_ENTRY *Flink;
+   (0x04) struct _LIST_ENTRY *Blink;
+} LIST_ENTRY, *PLIST_ENTRY, *RESTRICTED_POINTER PRLIST_ENTRY;
+
+typedef struct _LDR_DATA_TABLE_ENTRY {
+    (0x00) PVOID Reserved1[2];
+    (0x08) LIST_ENTRY.FLink InMemoryOrderLinks; // InLoadOrderModuleList.Flink from PEB_LDR_DATA points here
+    (0x0c) LIST_ENTRY.BLink InMemoryOrderLinks;
+    (0x10) PVOID Reserved2[2];
+    (0x18) PVOID DllBase;                       // At offset 0x10 from LIST_ENTRY.FLink InMemoryOrderLinks
+    (0x1c) PVOID EntryPoint;
+    (0x20) PVOID Reserved3;
+    (0x24) UNICODE_STRING FullDllName;
+    (0x00) BYTE Reserved4[8];
+    (0x00) PVOID Reserved5[3];
+    (0x00) union {
+             ULONG CheckSum;
+             PVOID Reserved6;
+           };
+    (0x00) ULONG TimeDateStamp;
+} LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
