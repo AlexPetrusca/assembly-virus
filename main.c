@@ -1,7 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
-void *getPEB() {
+int readIntAt(int p) { return *(int *) p; }
+
+short readShortAt(int p) { return *(short *) p; }
+
+void *getPEBAddr() {
     void *pTIB;
     __asm__("movl %%fs:0x30, %0" : "=r" (pTIB) : : );
     return pTIB;
@@ -17,61 +22,54 @@ int hash(char *s) {
 }
 
 int main() {
-    int peb = getPEB();
-    int ldr = *(int *) (peb + 0xC);
-    int module1 = *(int *) (ldr + 0x14);
-    int module2 = *(int *) (module1);
-    int module3 = *(int *) (module2);
-    int kernelAddr = *(int *) (module3 + 0x10);
-    int peOffset = *(int *) (kernelAddr + 0x3C);
-    int peAddr = kernelAddr + peOffset;
-    int exportRVA = *(int *) (peAddr + 0x78);
-    int exportAddr = kernelAddr + exportRVA;
-    int nFunctions = *(int *) (exportAddr + 0x14);
-    int nNames = *(int *) (exportAddr + 0x18);
-    int addressOfFunctions = *(int *) (exportAddr + 0x1c) + kernelAddr;
-    int addressOfNames = *(int *) (exportAddr + 0x20) + kernelAddr;
-    int addressOfOrdinals = *(int *) (exportAddr + 0x24) + kernelAddr;
+    const int pebAddr = (int) getPEBAddr();
+    const int ldr = readIntAt(pebAddr + 0xC);   // Read pointer to LDR
+    int modulePtr = readIntAt(ldr + 0x14);      // InMemoryOrderModuleList forward link (1st module)
+    modulePtr = readIntAt(modulePtr);           // Follow linked list to 2nd module
+    modulePtr = readIntAt(modulePtr);           // Follow linked list to 3rd module
+    const int kernelAddr = readIntAt(modulePtr + 0x10);  // At offset 0x10 from the forward ptr is the base address
+    const int peRVA = readIntAt(kernelAddr + 0x3C); // kernelAddr points to the DOS header, read PE RVA at 0x3C
+    const int peAddr = kernelAddr + peRVA;          // This is the virtual address of the PE header
+    const int exportRVA = readIntAt(peAddr + 0x78); // The export table RVA is at 0x78 from the start of PE header
+    const int exportAddr = kernelAddr + exportRVA;  // This is the virtual address of the export table
+
+    const int nFunctions = readIntAt(exportAddr + 0x14);  // The number of functions is at 0x14
+    const int functionsAddr = readIntAt(exportAddr + 0x1C) + kernelAddr; // RVA of array of function RVAs is at 0x1c
+    const int namesAddr =
+            readIntAt(exportAddr + 0x20) + kernelAddr;     // RVA of array of function name RVAs is at 0x20
+    const int ordinalsAddr = readIntAt(exportAddr + 0x24) + kernelAddr;  // RVA of array of function ordinals is at 0x24
 
     printf("kernelAddr = %08x\n", kernelAddr);
-    printf("peOffset = %08x\n", peOffset);
+    printf("peRVA = %08x\n", peRVA);
     printf("peAddr = %08x\n", peAddr);
     printf("exportRVA = %08x\n", exportRVA);
     printf("exportAddr = %08x\n", exportAddr);
     printf("nFunctions = %d\n", nFunctions);
-    printf("nNames = %d\n", nNames);
-    printf("addressOfFunctions = %d\n", addressOfFunctions);
-    printf("addressOfNames = %d\n", addressOfNames);
-    printf("addressOfOrdinals = %d\n", addressOfOrdinals);
+    printf("functionsAddr = %d\n", functionsAddr);
+    printf("namesAddr = %d\n", namesAddr);
+    printf("ordinalsAddr = %d\n", ordinalsAddr);
+
+    // Iterate the functions and calculate the hashes of their names
+    printf("\n\n");
+    for (int i = 0, p = namesAddr; i < nFunctions; i++, p += 4) {
+        char *name = (char *) (readIntAt(p) + kernelAddr);
+        printf("%s - %08xh\n", name, hash(name));
+    }
 
     printf("\n\n");
-
     int functionToFind = 0x79e4b02e;
-
-    int p = addressOfNames;
-
-    for (int i = 0; i < nFunctions; i++) {
-        char *name = *(int *) p + kernelAddr;
-        int h = hash(name);
-        //printf("%s - %08x\n", (char*)name, h);
-        if (h == functionToFind) {
-            short ordinal = *(short *) (addressOfOrdinals + i * 2);
-            int address = *(int *) (addressOfFunctions + ordinal * 4);
-            printf("Address of %s is %08x", name, address + kernelAddr);
+    for (int i = 0, p = namesAddr; i < nFunctions; i++, p += 4) {
+        char *name = (char *) (readIntAt(p) + kernelAddr);
+        if (hash(name) == functionToFind) {
+            short ordinal = readShortAt(ordinalsAddr + i * 2);                  // get function ordinal
+            int functionRVA = readIntAt(functionsAddr + ordinal * 4);           // get function RVA
+            printf("Address of %s is %08xh", name, functionRVA + kernelAddr);   // compute function address
             break;
         }
-        p += 4;
     }
 
-/*
-    for (int i = 0; i < nFunctions; i++) {
-        char* nameAddr = *(int*)addressOfNames + kernelAddr;
-        int h = hash(nameAddr);
-        printf("%s - %08x\n", nameAddr, h);
-        addressOfNames += 4;
-    }
-*/
-
+    printf("\n\n");
     return 0;
 }
+
 
