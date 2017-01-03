@@ -53,17 +53,18 @@ int main() {
     printf("\n\n");
     for (int i = 0, p = namesAddr; i < nFunctions; i++, p += 4) {
         char *name = (char *) (readIntAt(p) + kernelAddr);
-        printf("%s - %08xh\n", name, hash(name));
+        printf("%sHash equ 0x%08x\n", name, hash(name));
     }
 
     printf("\n\n");
-    int functionToFind = 0x79e4b02e;
+    int functionToFind = 0xD6F0C751;
     for (int i = 0, p = namesAddr; i < nFunctions; i++, p += 4) {
         char *name = (char *) (readIntAt(p) + kernelAddr);
         if (hash(name) == functionToFind) {
             short ordinal = readShortAt(ordinalsAddr + i * 2);                  // get function ordinal
             int functionRVA = readIntAt(functionsAddr + ordinal * 4);           // get function RVA
-            printf("Address of %s is %08xh", name, functionRVA + kernelAddr);   // compute function address
+            int functionAddress = functionRVA + kernelAddr;
+            printf("Address of %s is %08xh", name, functionAddress);   // compute function address
             break;
         }
     }
