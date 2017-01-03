@@ -1,15 +1,25 @@
 NULL equ                0
 
+%macro PRINT_VALUE 2
+    %if DEBUG
+        pushad
+        PRINT_STRING %1
+        PRINT_STRING ' = '
+        PRINT_HEX 4, %2
+        NEWLINE
+        popad
+    %endif
+%endmacro
 
 %macro PRINT_FILE 0 
-    pushad
-    mov dword[counter], 1
     %if DEBUG
+        pushad
+        mov dword[counter], 1
         NEWLINE
+        PRINT_STRING [search + 44]
+        NEWLINE
+        popad
     %endif
-    PRINT_STRING [search + 44]
-    NEWLINE
-    popad
 %endmacro
 
 %macro PRINT_TRACE 0 
