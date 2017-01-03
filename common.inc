@@ -26,6 +26,13 @@ NULL equ                0
     %endif
 %endmacro
 
+struc OVERLAPPED
+    internal:           resd 1
+    internalHigh:       resd 1
+    offset:             resd 1
+    offsetHigh:         resd 1
+    handle:             resd 1
+endstruc
 
 AcquireSRWLockExclusiveHash equ 0x5ca43371
 AcquireSRWLockSharedHash equ 0xb079a072
