@@ -1,9 +1,9 @@
 %include "io.inc"
 
 struc DATA
-   .var1:         resb 0x04
-   .someFunction: resb 0x10
-   .var2:         resb 0x04
+   .var1:         resb 4
+   .someFunction: resb 100
+   .var2:         resb 4
    .size:
 endstruc
 
@@ -41,6 +41,8 @@ function:
     mov     eax, [ebp + DATA.var1]
     mov     ebx, [ebp + DATA.var2]
     add     eax, ebx
+    call    foo
+foo:pop     ebx
     ret
 endf:
 
