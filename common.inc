@@ -1,6 +1,8 @@
+%define DEBUG           0
+
 NULL equ                0
 
-%macro PRINT_VALUE 2
+%macro PRINTH 2
     %if DEBUG
         pushad
         PRINT_STRING %1
@@ -11,12 +13,23 @@ NULL equ                0
     %endif
 %endmacro
 
-%macro PRINT_FILE 0 
+%macro PRINTD 2
+    %if DEBUG
+        pushad
+        PRINT_STRING %1
+        PRINT_STRING ' = '
+        PRINT_DEC 4, %2
+        NEWLINE
+        popad
+    %endif
+%endmacro
+
+%macro PRINT_FILE 1 
     %if DEBUG
         pushad
         mov dword[counter], 1
         NEWLINE
-        PRINT_STRING [search + 44]
+        PRINT_STRING %1
         NEWLINE
         popad
     %endif

