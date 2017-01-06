@@ -32,8 +32,8 @@ CMAIN:
     nop
     nop
     call dest
-    
-    
+
+
 start:
     call    foo         ; read current EIP
 foo:pop     eax
