@@ -49,6 +49,45 @@ NULL equ                0
     %endif
 %endmacro
 
+%macro NOPS 0
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop    
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+%endmacro
+
 struc OVERLAPPED
     internal:           resd 1
     internalHigh:       resd 1

@@ -12,7 +12,6 @@ global CMAIN
 CMAIN:
     mov     ebp, esp                            ; for correct debugging
     
-;    enter   DATA.size, 0
     push    ebp                             ; save old ebp
     sub     esp, DATA.size                  ; allocate local variables
     mov     ebp, esp                        ; set ebp for variable indexing
@@ -31,7 +30,6 @@ CMAIN:
     mov     [ebp + DATA.var2], dword 0x66666666
     call    edx                             ; call the functon!
     
-;    leave
     add     esp, DATA.size                  ; de-allocate local variables
     pop     ebp                             ; restore stack
         
