@@ -1,8 +1,7 @@
 global _main
 
-GetStdHandle equ (6B81DA70h + 8F60000h)
-WriteFile    equ (6B829D30h + 8F60000h)
-ExitProcess  equ (6B82ADB0h + 8F60000h)
+extern _GetStdHandle@4
+extern _WriteFile@20
     
 section .text
 _main:
@@ -16,13 +15,11 @@ start:
     
     ; hStdOut = GetstdHandle(STD_OUTPUT_HANDLE)
     push    -11
-    ;call    _GetStdHandle@4
-    mov     ecx, GetStdHandle
-    call    ecx
+    call    _GetStdHandle@4
 
     ; WriteFile( hstdOut, message, length(message), &bytes, 0);
     push    0                       ; unused parameter
-    push    ebx                     ; &bytes
+    push    0                     ; &bytes
     push    message_end - message   ; length
     call foo
 foo:
@@ -30,20 +27,15 @@ foo:
     add     ebx, message - foo
     push    ebx                     ; message address
     push    eax                     ; handle to stdout
-    mov     ecx, WriteFile
-    call    ecx 
+    call    _WriteFile@20 
     
     pop     ebx                     ; destroy written
     pop     ebx                     ; restore ebx    
         
-    jmp     message_end    
-    message:         db 'Im a virus, motherfucker!', 10, 'GET HACKED!!!', 10
-    message_end:      
-exit:
-    ; ExitProcess(0)
-    push    0
-    mov     ecx, ExitProcess
-    call    ecx
+    jmp     exit    
     
-    ; never here
-    hlt
+    message:         db 'Im a virus, motherfucker!', 10, 'GET HACKED!!!', 10
+    message_end: 
+         
+exit:
+    ret
