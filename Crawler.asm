@@ -29,9 +29,9 @@ filemask:               db "*.*", 0
 path: times 260         db 0
 dir:  times 260         db 0
 FIND_DATA: times 592    db 0
-counter:                dd 10
+counter:                dd 20
 handle:                 dd 0
-startingPath:           db "C:\Program Files (x86)\"
+startingPath:           db "C:\Program Files (x86)\Adobe"
 
 section .text
 CMAIN:
@@ -88,25 +88,41 @@ crawlDirectory:
 
     push    path
     call    _SetCurrentDirectoryA@4
-  
+
+    cmp     eax, 0
+    jne     success
+      
+    call    _GetLastError@0
+    PRINTH  "_____EAX1", eax
+    NEWLINE
+    PRINT_STRING "currentDirectory: "
+    PRINT_STRING path
+    NEWLINE
     lea     eax, [dir]
     push    eax
     mov     eax, 260
     push    eax
     call    _GetCurrentDirectoryA@8
+    PRINT_STRING [dir]
+    NEWLINE
+    NEWLINE
+success:
+  
+;    lea     eax, [dir]
+;    push    eax
+;    mov     eax, 260
+;    push    eax
+;    call    _GetCurrentDirectoryA@8
+;  
+;    %if DEBUG
+;    PRINT_STRING [dir]
+;    NEWLINE
+;    %endif
     
-    ;%if DEBUG
     ;NEWLINE
-    ;PRINT_STRING [dir]
+    ;PRINT_STRING "currentDirectory1: "
+    ;PRINT_STRING path
     ;NEWLINE
-    ;NEWLINE
-    ;%endif
-    
-    NEWLINE
-    PRINT_STRING "currentDirectory1: "
-    PRINT_STRING path
-    NEWLINE
-    NEWLINE
     
     lea     eax, [FIND_DATA]
     push    eax
@@ -126,7 +142,6 @@ findNextFile:
     
 processFile:
     cmp     eax, 0
-   ; PRINTH  "_____EAX", eax
     je      exit                ; error?
     
     mov     bl, byte [FIND_DATA + 44]
@@ -141,11 +156,6 @@ processFile:
     lea     edi, [path]
     mov     ecx, 65
     rep     movsd  
-    
-    dec     dword [counter]     ; decrement counter
-    mov     eax, [counter]
-    cmp     eax, 0
-    je      exit                ; if counter is 0, exit
     
     mov     ebx, [FIND_DATA]
     and     ebx, 0x10           ; 0x10 == directory proprety
@@ -170,11 +180,31 @@ processFile:
     push    path
     call    _SetCurrentDirectoryA@4
     
+    cmp     eax, 0
+    jne     success1
+      
+    call    _GetLastError@0
+    PRINTH  "_____EAX1", eax
     NEWLINE
-    NEWLINE
-    PRINT_STRING "currentDirectory2: "
+    PRINT_STRING "currentDirectory: "
     PRINT_STRING path
     NEWLINE
+    lea     eax, [dir]
+    push    eax
+    mov     eax, 260
+    push    eax
+    call    _GetCurrentDirectoryA@8
+    PRINT_STRING [dir]
+    NEWLINE
+    NEWLINE
+success1:
+    
+    
+    ;NEWLINE
+    ;NEWLINE
+    ;PRINT_STRING "currentDirectory2: "
+    ;PRINT_STRING path
+    ;NEWLINE
     
     mov     eax, [counter]
     cmp     eax, 0
@@ -182,10 +212,34 @@ processFile:
     jmp     findNextFile 
 
 printFile:
-    NEWLINE
-    PRINT_STRING [FIND_DATA + 44]
+   ; PRINT_STRING [FIND_DATA + 44]
+   ; NEWLINE
+    xor     eax, eax
+    loop_findTermination:
+        mov     bl, byte [FIND_DATA + 44 + eax]
+        cmp     bl, 0
+        je      compareEXE   
+    inc     eax
+    jmp     loop_findTermination
     
-    jmp     findNextFile        ; else continue looping
+       
+    compareEXE:
+    mov     ebx, dword ".exe"
+    mov     ecx, dword [FIND_DATA + 44 + eax - 4]    
+    cmp     ebx, ecx   
+    jne     notEXE              ; if doesnt have .exe findNextFile
+        
+    ; else print and decrement counter    
+    ;PRINT_STRING [FIND_DATA + 44]
+    ;NEWLINE
+    
+    dec     dword [counter]     ; decrement counter
+    mov     eax, [counter]
+    cmp     eax, 0
+    je      exit                ; if counter is 0, exit
+    
+    notEXE:    
+    jmp     findNextFile        ; else if not .exe continue looping
 
 exit:   
     ;PRINTH  "counter", counter
