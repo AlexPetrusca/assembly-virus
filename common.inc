@@ -1,4 +1,4 @@
-%define DEBUG           0
+%define DEBUG           1
 
 NULL    equ             0
 
@@ -96,6 +96,17 @@ struc OVERLAPPED
     offset:             resd 1
     offsetHigh:         resd 1
     handle:             resd 1
+endstruc
+
+struc SYSTEMTIME 
+   .wYear:           resw 1
+   .wMonth:          resw 1
+   .wDayOfWeek:      resw 1
+   .wDay:            resw 1
+   .wHour:           resw 1
+   .wMinute:         resw 1
+   .wSecond:         resw 1
+   .wMilliseconds:   resw 1
 endstruc
 
 AcquireSRWLockExclusiveHash equ 0x5ca43371
