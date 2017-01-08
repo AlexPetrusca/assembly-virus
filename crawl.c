@@ -7,7 +7,6 @@
 #define COUNT 30
 
 int main() {
-    char* exe = ".exe";
     WIN32_FIND_DATA findData;
     HANDLE handle = NULL;
     int counter = COUNT;
@@ -41,12 +40,8 @@ int main() {
     lstrcatA(searchPath, "\\");
     lstrcatA(searchPath, findData.cFileName);
     if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) goto DIR;
-    int i = lstrlenA(findData.cFileName) - 1, j = 4 - 1;
-    while (j >= 0) {
-        if (findData.cFileName[i] != exe[j]) goto NEXT_FILE;
-        j--;
-        i--;
-    }
+    int i = lstrlenA(findData.cFileName) - 4;
+    if (*(int*)(findData.cFileName + i) != 0x6578652E) goto NEXT_FILE;  // is the file a .exe?
     printf("File: %s\n", searchPath);
     counter--;
     if (counter == 0) goto EXIT;
