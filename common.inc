@@ -1,6 +1,8 @@
 %define DEBUG           0
 
-NULL equ                0
+NULL    equ             0
+
+extern  _ExitProcess@4
 
 %macro PRINTH 2
     %if DEBUG
