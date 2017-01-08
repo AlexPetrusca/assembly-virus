@@ -29,9 +29,9 @@ filemask:               db "*.*", 0
 path: times 260         db 0
 dir:  times 260         db 0
 FIND_DATA: times 592    db 0
-counter:                dd 20
+counter:                dd 100000
 handle:                 dd 0
-startingPath:           db "C:\Program Files (x86)\Adobe"
+startingPath:           db "C:\Program Files (x86)\Adobe\Acrobat Reader DC"
 
 section .text
 CMAIN:
@@ -92,20 +92,20 @@ crawlDirectory:
     cmp     eax, 0
     jne     success
       
-    call    _GetLastError@0
-    PRINTH  "_____EAX1", eax
-    NEWLINE
-    PRINT_STRING "currentDirectory: "
-    PRINT_STRING path
-    NEWLINE
-    lea     eax, [dir]
-    push    eax
-    mov     eax, 260
-    push    eax
-    call    _GetCurrentDirectoryA@8
-    PRINT_STRING [dir]
-    NEWLINE
-    NEWLINE
+;    call    _GetLastError@0
+;    PRINTH  "_____EAX1", eax
+;    NEWLINE
+;    PRINT_STRING "currentDirectory: "
+;    PRINT_STRING path
+;    NEWLINE
+;    lea     eax, [dir]
+;    push    eax
+;    mov     eax, 260
+;    push    eax
+;    call    _GetCurrentDirectoryA@8
+;    PRINT_STRING [dir]
+;    NEWLINE
+;    NEWLINE
 success:
   
 ;    lea     eax, [dir]
@@ -157,6 +157,13 @@ processFile:
     mov     ecx, 65
     rep     movsd  
     
+    loop_find0:
+        mov     bl, byte [FIND_DATA + 44 + eax]
+        cmp     bl, 0
+        je      compareEXE   
+    inc     eax
+    jmp     loop_find0
+    
     mov     ebx, [FIND_DATA]
     and     ebx, 0x10           ; 0x10 == directory proprety
     cmp     ebx, 0x10
@@ -183,23 +190,21 @@ processFile:
     cmp     eax, 0
     jne     success1
       
-    call    _GetLastError@0
-    PRINTH  "_____EAX1", eax
-    NEWLINE
-    PRINT_STRING "currentDirectory: "
-    PRINT_STRING path
-    NEWLINE
-    lea     eax, [dir]
-    push    eax
-    mov     eax, 260
-    push    eax
-    call    _GetCurrentDirectoryA@8
-    PRINT_STRING [dir]
-    NEWLINE
-    NEWLINE
+;    call    _GetLastError@0
+;    PRINTH  "_____EAX1", eax
+;    NEWLINE
+;    PRINT_STRING "currentDirectory: "
+;    PRINT_STRING path
+;    NEWLINE
+;    lea     eax, [dir]
+;    push    eax
+;    mov     eax, 260
+;    push    eax
+;    call    _GetCurrentDirectoryA@8
+;    PRINT_STRING [dir]
+;    NEWLINE
+;    NEWLINE
 success1:
-    
-    
     ;NEWLINE
     ;NEWLINE
     ;PRINT_STRING "currentDirectory2: "
@@ -212,8 +217,8 @@ success1:
     jmp     findNextFile 
 
 printFile:
-   ; PRINT_STRING [FIND_DATA + 44]
-   ; NEWLINE
+    PRINT_STRING [FIND_DATA + 44]
+    NEWLINE
     xor     eax, eax
     loop_findTermination:
         mov     bl, byte [FIND_DATA + 44 + eax]
