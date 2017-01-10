@@ -1,4 +1,4 @@
-%define DEBUG           1
+%define DEBUG           0
 
 NULL    equ             0
 
@@ -107,6 +107,86 @@ struc SYSTEMTIME
    .wMinute:         resw 1
    .wSecond:         resw 1
    .wMilliseconds:   resw 1
+   .size:
+endstruc
+
+struc DOS
+  .signature:            resw 1   ; 0x00   = 0x5a4D (ZM)
+  .bytes_in_last_block:  resw 1   ; 0x02
+  .blocks_in_file:       resw 1   ; 0x04
+  .num_relocs:           resw 1   ; 0x06
+  .header_paragraphs:    resw 1   ; 0x08
+  .min_extra_paragraphs: resw 1   ; 0x0A
+  .max_extra_paragraphs: resw 1   ; 0x0C
+  .ss:                   resw 1   ; 0x0E
+  .sp:                   resw 1   ; 0x10
+  .checksum:             resw 1   ; 0x12
+  .ip:                   resw 1   ; 0x14
+  .cs:                   resw 1   ; 0x16
+  .reloc_table_offset:   resw 1   ; 0x18
+  .overlay_number:       resw 1   ; 0x1A
+  .reserved1:            resw 4   ; 0x1C
+  .oemid:                resw 1   ; 0x24
+  .oeminfo:              resw 1   ; 0x26
+  .reserved2:            resw 10  ; 0x28
+  .lfanew:               resd 1   ; 0x3C
+  .size:
+endstruc
+
+struc PE
+    .Signature:                      resd 1  ; 0x00 = 0x50450000
+    .Machine:                        resw 1  ; 0x04
+    .NumberOfSections:               resw 1  ; 0x06
+    .TimeDateStamp:                  resd 1  ; 0x08
+    .PointerToSymbolTable:           resd 1  ; 0x0C
+    .NumberOfSymbols:                resd 1  ; 0x10
+    .SizeOfOptionalHeader:           resw 1  ; 0x14
+    .Characteristics:                resw 1  ; 0x16
+    .Magic:                          resw 1  ; 0x18 = 0x010B ?
+    .MajorLinkerVersion:             resb 1  ; 0x1A
+    .MinorLinkerVersion:             resb 1  ; 0x1B
+    .SizeOfCode:                     resd 1  ; 0x1C
+    .SizeOfInitializedData:          resd 1  ; 0x20
+    .SizeOfUninitializedData:        resd 1  ; 0x24
+    .AddressOfEntryPoint:            resd 1  ; 0x28
+    .BaseOfCode:                     resd 1  ; 0x2C
+    .BaseOfData:                     resd 1  ; 0x30
+    .ImageBase:                      resd 1  ; 0x34
+    .SectionAlignment:               resd 1  ; 0x38
+    .FileAlignment:                  resd 1  ; 0x3C
+    .MajorOperatingSystemVersion:    resw 1  ; 0x40
+    .MinorOperatingSystemVersion:    resw 1  ; 0x42
+    .MajorImageVersion:              resw 1  ; 0x44
+    .MinorImageVersion:              resw 1  ; 0x46
+    .MajorSubsystemVersion:          resw 1  ; 0x48
+    .MinorSubsystemVersion:          resw 1  ; 0x4A
+    .Reserved1:                      resd 1  ; 0x4C
+    .SizeOfImage:                    resd 1  ; 0x50
+    .SizeOfHeaders:                  resd 1  ; 0x54
+    .CheckSum:                       resd 1  ; 0x58
+    .Subsystem:                      resw 1  ; 0x5C
+    .DllCharacteristics:             resw 1  ; 0x5E
+    .SizeOfStackReserve:             resd 1  ; 0x60
+    .SizeOfStackCommit:              resd 1  ; 0x64
+    .SizeOfHeapReserve:              resd 1  ; 0x68
+    .SizeOfHeapCommit:               resd 1  ; 0x6C
+    .LoaderFlags:                    resd 1  ; 0x70
+    .NumberOfRvaAndSizes:            resd 1  ; 0x74
+    .size:                                   ; = 0x78
+endstruc
+
+struc SECTIONH
+    .Name:                  resb   8   ; 0x00
+    .VirtualSize:           resd   1   ; 0x08
+    .VirtualAddress:        resd   1   ; 0x0C
+    .SizeOfRawData:         resd   1   ; 0x10
+    .PointerToRawData:      resd   1   ; 0x14
+    .PointerToRelocations:  resd   1   ; 0x18
+    .PointerToLinenumbers:  resd   1   ; 0x1C
+    .NumberOfRelocations:   resw   1   ; 0x20
+    .NumberOfLinenumbers:   resw   1   ; 0x22
+    .Characteristics:       resd   1   ; 0x24
+    .size:                             ; = 0x28
 endstruc
 
 AcquireSRWLockExclusiveHash equ 0x5ca43371

