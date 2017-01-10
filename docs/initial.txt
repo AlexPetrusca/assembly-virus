@@ -1,0 +1,16 @@
+ALYac	Gen:Win32.FileInfector.c8W@aChFsn	20170110
+Ad-Aware	Gen:Win32.FileInfector.c8W@aChFsn	20170110
+Arcabit	Gen:Win32.FileInfector.ECD2A8	20170110
+Avira (no cloud)	TR/Crypt.XPACK.Gen	20170110
+Baidu	Win32.Trojan.WisdomEyes.16070401.9500.9999	20170110
+BitDefender	Gen:Win32.FileInfector.c8W@aChFsn	20170110
+Bkav	W32.eHeur.Virus05	20170110
+CrowdStrike Falcon (ML)	malicious_confidence_70% (D)	20161024
+Emsisoft	Gen:Win32.FileInfector.c8W@aChFsn (B)	20170110
+F-Secure	Gen:Win32.FileInfector.c8W@aChFsn	20170110
+GData	Gen:Win32.FileInfector.c8W@aChFsn	20170110
+Kaspersky	HEUR:Virus.Win32.Infector	20170110
+eScan	Gen:Win32.FileInfector.c8W@aChFsn	20170110
+NANO-Antivirus	Virus.Win32.Gen.ccmw	20170110
+Qihoo-360	HEUR/QVM19.1.0000.Malware.Gen	20170110
+Sophos	Mal/EncPk-D	20170110
