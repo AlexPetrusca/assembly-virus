@@ -4,9 +4,9 @@ NULL            equ 0
 
 ; markers
 ZM              equ 0x5A4D
+EP              equ 0x4550
 AD              equ 0x4144
 AD_OFFSET       equ 0x38
-EP              equ 0x4550
 
 ; machine types
 INTEL386        equ 0x014C
@@ -27,7 +27,7 @@ extern  _ExitProcess@4
     %if DEBUG
         pushad
         PRINT_STRING %1
-        PRINT_STRING ' = '
+        PRINT_STRING ' = 0x'
         PRINT_HEX 4, %2
         NEWLINE
         popad
@@ -58,15 +58,15 @@ extern  _ExitProcess@4
 
 %macro PRINT_TRACE 0 
     %if DEBUG 
-        pushad
-        PRINT_DEC    4, [counter]
-        PRINT_STRING ": "
-        PRINT_HEX    4, esp
-        PRINT_STRING "  "
-        PRINT_HEX    4, eax
-        NEWLINE
-        inc dword[counter]
-        popad
+;        pushad
+;        PRINT_DEC    4, [counter]
+;        PRINT_STRING ": "
+;        PRINT_HEX    4, esp
+;        PRINT_STRING "  "
+;        PRINT_HEX    4, eax
+;        NEWLINE
+;        inc dword[counter]
+;        popad
     %endif
 %endmacro
 
@@ -150,7 +150,7 @@ struc DOS
   .oeminfo:              resw 1   ; 0x26
   .reserved2:            resw 10  ; 0x28
   .lfanew:               resd 1   ; 0x3C
-  .size:
+  .size:                          ; 0x40
 endstruc
 
 struc PE
@@ -165,7 +165,7 @@ struc PE
     .Magic:                          resw 1  ; 0x18 = 0x010B ?
     .MajorLinkerVersion:             resb 1  ; 0x1A
     .MinorLinkerVersion:             resb 1  ; 0x1B
-    .SizeOfCode:                     resd 1  ; 0x1C
+    .SizeOfCode:                     resd 1  ; 0x1C      ; <--
     .SizeOfInitializedData:          resd 1  ; 0x20
     .SizeOfUninitializedData:        resd 1  ; 0x24
     .AddressOfEntryPoint:            resd 1  ; 0x28
@@ -181,9 +181,9 @@ struc PE
     .MajorSubsystemVersion:          resw 1  ; 0x48
     .MinorSubsystemVersion:          resw 1  ; 0x4A
     .Reserved1:                      resd 1  ; 0x4C
-    .SizeOfImage:                    resd 1  ; 0x50
+    .SizeOfImage:                    resd 1  ; 0x50     ; <--
     .SizeOfHeaders:                  resd 1  ; 0x54
-    .CheckSum:                       resd 1  ; 0x58
+    .CheckSum:                       resd 1  ; 0x58     ; <-- fixed
     .Subsystem:                      resw 1  ; 0x5C
     .DllCharacteristics:             resw 1  ; 0x5E
     .SizeOfStackReserve:             resd 1  ; 0x60
