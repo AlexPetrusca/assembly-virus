@@ -20,7 +20,6 @@ section .data
 
 section .text
 _main:   
-    mov     ebp, esp
 
     ; void print(char* str, int len)
     push    (message_end - message)

@@ -6,6 +6,3 @@ SS - stack
 FS - thread environment block (TEB)
 ES - seems to point to DS
 GS - seems to point to DS
-
-Relocations
-- addresses are in the DOS header

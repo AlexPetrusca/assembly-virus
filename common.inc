@@ -10,6 +10,8 @@ AD_OFFSET       equ 0x38
 
 ; machine types
 INTEL386        equ 0x014C
+IA64            equ 0x0200
+AMD64           equ 0x8664
 
 ; instruction opcodes
 JMP_NR          equ 0xE9
