@@ -1,7 +1,5 @@
 %include "io.inc"
 
-extern _GetStdHandle@4
-extern _WriteFile@20
 extern _GetLastError@0
 extern _VirtualAlloc@16
 extern _VirtualProtect@16

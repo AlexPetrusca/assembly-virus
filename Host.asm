@@ -17,11 +17,9 @@ section .data
     message:         db 'Hello, World', 0, 10
     message_end:
     buffer:          times 32 db 0    
-    crap:  times 100000 db 0                              
 
 section .text
 _main:   
-    mov     ebp, esp
 
     ; void print(char* str, int len)
     push    (message_end - message)
