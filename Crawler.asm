@@ -1,17 +1,10 @@
 %include "io.inc"
+%include "./common.inc"
 
-%define DEBUG           1
-
-%macro PRINTH 2
-    %if DEBUG
-        pushad
-        PRINT_STRING %1
-        PRINT_STRING ' = '
-        PRINT_HEX 4, %2
-        NEWLINE
-        popad
-    %endif
-%endmacro
+COUNT               equ 100000
+STACK_SIZE          equ 100
+MAX_PATH_LENGTH     equ 260
+DIRECTORY           equ 10h
 
 global CMAIN
 extern  _GetStdHandle@4
@@ -23,246 +16,134 @@ extern  _GetCurrentDirectoryA@8
 extern  _SetCurrentDirectoryA@4
 extern  _GetLastError@0
 extern  _FindClose@4
+extern  _lstrcpy@8
+extern  _lstrcat@8
+extern printf
 
 section .data
-filemask:               db "*.*", 0
-path: times 260         db 0
-dir:  times 260         db 0
+fileMask:               db "\*.*", 0
+backslash:              db "\", 0
 FIND_DATA: times 592    db 0
-counter:                dd 100000
-handle:                 dd 0
-startingPath:           db "C:\Program Files (x86)\Adobe\Acrobat Reader DC"
+findHandle:             dd 0
+counter:                dd COUNT
+currentPath: times 260  db 0
+searchPath: times 260   db 0
+
+startingPath:           db "C:\Program Files (x86)", 0  ; must be fixed when ported
 
 section .text
 CMAIN:
-    mov     ebp, esp; for correct debugging
-   
-    lea     esi, [startingPath]     ; initialize path to startingPath
-    lea     edi, [path]
-    mov     ecx, 65
-    rep     movsd 
+    mov     ebp, esp
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    sub     esp, MAX_PATH_LENGTH
+    mov     ebx, esp
+    push    startingPath
+    push    ebx
+    call    _lstrcpy@8
+    ;PRINTS  "startPath", [ebx]
     
-    sub     esp, 260        ; create cavity for path
-    lea     esi, [path]     ; copy path onto stack
-    lea     edi, [esp]
-    mov     ecx, 65
-    rep     movsd
-    mov     eax, [handle]
-    push    eax
-    
-    ;PRINT_STRING [ebp - 260]
-    ;NEWLINE
-    ;PRINTH  "handle", handle
-    ;NEWLINE
-    ;PRINTH  "handle", [ebp - 264]
-    ;NEWLINE
-    
-    call    crawlDirectory
-    
-    ;NEWLINE
-    ;NEWLINE
-    ;PRINT_STRING "exit"
-    ;NEWLINE
-    push    0
-    call    _ExitProcess@4
-    
-    xor     eax, eax
-    ret
-    
-    
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
- 
-    
-; crawlDirectory(int handle, char* relativePath)
-crawlDirectory:     
-    push    ebp         ; prolog
-    mov     ebp, esp    ; makes a fixed base pointer to refrence stack variables through 
-    pushad
+next_dir:
+    cmp     ebp, esp            ; must be fixed when ported
+    je      exit
 
-    ;PRINT_STRING [ebp + 12]
-    ;NEWLINE
-    ;NEWLINE
-    ;PRINT_HEX 4, [handle]
-    ;NEWLINE
-    ;PRINT_HEX 4, [ebp + 8]
-
-    push    path
-    call    _SetCurrentDirectoryA@4
-
-    cmp     eax, 0
-    jne     success
-      
-;    call    _GetLastError@0
-;    PRINTH  "_____EAX1", eax
-;    NEWLINE
-;    PRINT_STRING "currentDirectory: "
-;    PRINT_STRING path
-;    NEWLINE
-;    lea     eax, [dir]
-;    push    eax
-;    mov     eax, 260
-;    push    eax
-;    call    _GetCurrentDirectoryA@8
-;    PRINT_STRING [dir]
-;    NEWLINE
-;    NEWLINE
-success:
-  
-;    lea     eax, [dir]
-;    push    eax
-;    mov     eax, 260
-;    push    eax
-;    call    _GetCurrentDirectoryA@8
-;  
-;    %if DEBUG
-;    PRINT_STRING [dir]
-;    NEWLINE
-;    %endif
+    push    esp                 ; pop path off the stack
+    push    currentPath
+    call    _lstrcpy@8
+    add     esp, MAX_PATH_LENGTH
+    ;PRINTS  "currentPath", currentPath
     
-    ;NEWLINE
-    ;PRINT_STRING "currentDirectory1: "
-    ;PRINT_STRING path
+    push    currentPath         ; copy currentPath into searchPath
+    push    searchPath
+    call    _lstrcpy@8
+    
+    push    fileMask            ; append the file mask
+    push    searchPath
+    call    _lstrcat@8
+    ;PRINTS  "searchPath", searchPath
     ;NEWLINE
     
-    lea     eax, [FIND_DATA]
-    push    eax
-    lea     eax, [filemask]
-    push    eax
+    push    FIND_DATA           ; find the first file
+    push    searchPath
     call    _FindFirstFileA@8
-    mov     [handle], eax
+    cmp     eax, -1             ; invalid handle? 
+    je      close_search        ; then error and close_search
+    mov     [findHandle], eax
+    jmp     process_file        ; else process the file
     
-    jmp     processFile
-     
-findNextFile:
-    lea     eax, [FIND_DATA]
-    push    eax
-    mov     eax, [handle]
+next_file:
+    push    FIND_DATA
+    mov     eax, [findHandle]
     push    eax
     call    _FindNextFileA@8
-    
-processFile:
     cmp     eax, 0
-    je      exit                ; error?
+    je      close_search
     
-    mov     bl, byte [FIND_DATA + 44]
-    cmp     bl, 0x2e
-    je      findNextFile     
+process_file:
+    ;PRINTS "fileName", [FIND_DATA + 44]
+    ; skip '.' and '..' directories
+    cmp     word [FIND_DATA + 44], word 0x002e
+    je      next_file
+    cmp     word [FIND_DATA + 44], word 0x2e2e
+    je      next_file
     
-    mov     bx, word [FIND_DATA + 44]
-    cmp     bx, 0x2e2e
-    je      findNextFile  
-    
-    lea     esi, [FIND_DATA + 44]    
-    lea     edi, [path]
-    mov     ecx, 65
-    rep     movsd  
-    
-    loop_find0:
-        mov     bl, byte [FIND_DATA + 44 + eax]
-        cmp     bl, 0
-        je      compareEXE   
-    inc     eax
-    jmp     loop_find0
-    
-    mov     ebx, [FIND_DATA]
-    and     ebx, 0x10           ; 0x10 == directory proprety
-    cmp     ebx, 0x10
-    jne     printFile           ; if not a directory, print the file
-                         
-    ; else go into directory and recurse
-    sub     esp, 260            ; create cavity for path
-    lea     esi, [path]         ; copy path onto stack
-    lea     edi, [esp]
-    mov     ecx, 65
-    rep     movsd  
-    mov     eax, [handle]
+    push    currentPath         ; get file absolute path
+    push    searchPath
+    call    _lstrcpy@8
+    push    backslash
+    push    searchPath
+    call    _lstrcat@8
+    lea     eax, [FIND_DATA + 44]
     push    eax
-    call    crawlDirectory
-   
-    lea     esi, [ebp + 12]      ; restore old value of path from stack
-    lea     edi, [path]
-    mov     ecx, 65
-    rep     movsd    
+    push    searchPath
+    call    _lstrcat@8
     
-    push    path
-    call    _SetCurrentDirectoryA@4
+    mov     eax, [FIND_DATA + 0]
+    and     eax, DIRECTORY 
+    cmp     eax, DIRECTORY      ; directory?
+    je      dir                 ; then its a dir
     
-    cmp     eax, 0
-    jne     success1
-      
-;    call    _GetLastError@0
-;    PRINTH  "_____EAX1", eax
-;    NEWLINE
-;    PRINT_STRING "currentDirectory: "
-;    PRINT_STRING path
-;    NEWLINE
-;    lea     eax, [dir]
-;    push    eax
-;    mov     eax, 260
-;    push    eax
-;    call    _GetCurrentDirectoryA@8
-;    PRINT_STRING [dir]
-;    NEWLINE
-;    NEWLINE
-success1:
-    ;NEWLINE
-    ;NEWLINE
-    ;PRINT_STRING "currentDirectory2: "
-    ;PRINT_STRING path
-    ;NEWLINE
-    
-    mov     eax, [counter]
-    cmp     eax, 0
-    je      exit                ; if counter is 0, exit
-    jmp     findNextFile 
-
-printFile:
-    PRINT_STRING [FIND_DATA + 44]
-    NEWLINE
+    ; else its a file and check if exe
     xor     eax, eax
-    loop_findTermination:
-        mov     bl, byte [FIND_DATA + 44 + eax]
-        cmp     bl, 0
-        je      compareEXE   
+loop_findTermination:
+    mov     bl, byte [FIND_DATA + 44 + eax]
+    cmp     bl, 0
+    je      compareEXE
+    
     inc     eax
     jmp     loop_findTermination
     
-       
-    compareEXE:
+compareEXE:
     mov     ebx, dword ".exe"
     mov     ecx, dword [FIND_DATA + 44 + eax - 4]    
     cmp     ebx, ecx   
-    jne     notEXE              ; if doesnt have .exe findNextFile
-        
-    ; else print and decrement counter    
-    ;PRINT_STRING [FIND_DATA + 44]
-    ;NEWLINE
-    
-    dec     dword [counter]     ; decrement counter
-    mov     eax, [counter]
-    cmp     eax, 0
-    je      exit                ; if counter is 0, exit
-    
-    notEXE:    
-    jmp     findNextFile        ; else if not .exe continue looping
+    jne     next_file
 
-exit:   
-    ;PRINTH  "counter", counter
-   
-    mov     eax, [handle]     ;close current find handle
+    ;;;;; IF FILE AND EXE, THEN INFECT ;;;;;
+    PRINTS  "FILE", searchPath
+    dec     dword [counter]
+    jz      exit
+    jmp     next_file
+    
+dir:
+    sub     esp, MAX_PATH_LENGTH
+    mov     ebx, esp
+    push    searchPath
+    push    ebx
+    call    _lstrcpy@8
+    jmp     next_file
+    
+close_search:
+    mov     eax, [findHandle]
     push    eax
     call    _FindClose@4
+    jmp     next_dir
+
+exit:
+    mov     eax, COUNT
+    sub     eax, [counter]
+    NEWLINE
+    PRINTD "counter", eax
     
-    ;NEWLINE
-    ;PRINTH  "--------------------handle", [handle]
-    ;NEWLINE
-    ;PRINTH  "--------------------oldHandle", [ebp + 8]
+    push    0
+    call    _ExitProcess@4
     
-    mov     eax, [ebp + 8]    ; restore old handle from stack
-    mov     [handle], eax
-    
-    popad
-    mov     esp, ebp          ; epilog 
-    pop     ebp               ; restores the stack from prolog
-    
-    retn    264

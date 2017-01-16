@@ -1,8 +1,19 @@
-%define DEBUG           0
+%define DEBUG           1
 
 NULL    equ             0
 
 extern  _ExitProcess@4
+
+%macro PRINTS 2
+    %if DEBUG
+        pushad
+        PRINT_STRING %1
+        PRINT_STRING ' = '
+        PRINT_STRING %2
+        NEWLINE
+        popad
+    %endif
+%endmacro
 
 %macro PRINTH 2
     %if DEBUG

@@ -3,8 +3,8 @@
 
 #define PATH "C:\\Program Files (x86)"
 #define MAX_PATH_LENGHT 260
-#define STACK_SIZE 100
-#define COUNT 30
+#define STACK_SIZE 200
+#define COUNT 100000
 
 int main() {
     WIN32_FIND_DATA findData;
@@ -34,15 +34,17 @@ int main() {
     NEXT_FILE:
     eax = FindNextFile(handle, &findData);
     if (eax == 0) goto CLOSE_SEARCH;
+
     PROCESS_FILE:
-    if (findData.cFileName[0] == '.') goto NEXT_FILE;
+    if (findData.cFileName[0] == '.' && findData.cFileName[1] == 0) goto NEXT_FILE;
+    if (findData.cFileName[0] == '.' && findData.cFileName[1] == '.') goto NEXT_FILE;
     lstrcpyA(searchPath, currentPath);
     lstrcatA(searchPath, "\\");
     lstrcatA(searchPath, findData.cFileName);
     if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) goto DIR;
     int i = lstrlenA(findData.cFileName) - 4;
     if (*(int*)(findData.cFileName + i) != 0x6578652E) goto NEXT_FILE;  // is the file a .exe?
-    printf("File: %s\n", searchPath);
+    printf("FILE = %s\n", searchPath);
     counter--;
     if (counter == 0) goto EXIT;
     goto NEXT_FILE;
