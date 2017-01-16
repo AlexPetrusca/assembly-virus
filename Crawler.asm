@@ -2,39 +2,46 @@
 %include "./common.inc"
 
 COUNT               equ 100000
-STACK_SIZE          equ 100
 MAX_PATH_LENGTH     equ 260
 DIRECTORY           equ 10h
 
 global CMAIN
-extern  _GetStdHandle@4
-extern  _WriteFile@20
-extern  _ExitProcess@4
 extern  _FindFirstFileA@8
 extern  _FindNextFileA@8
-extern  _GetCurrentDirectoryA@8
-extern  _SetCurrentDirectoryA@4
-extern  _GetLastError@0
 extern  _FindClose@4
 extern  _lstrcpy@8
 extern  _lstrcat@8
-extern printf
+extern  _ExitProcess@4
+
+struc DATA
+    .fileMask:               resb 5 ; 0x5C2A2E2A "\*.*"
+    .backslash:              resb 2 ; "\", 0   ; 0x5C ; "\"
+    .findData:              resb 592
+    .findHandle:             resd 1
+    .counter:                resd 1 ; COUNT
+    .currentPath:            resb 260
+    .searchPath:             resb 260    
+    .size:
+endstruc
 
 section .data
-fileMask:               db "\*.*", 0
-backslash:              db "\", 0
-FIND_DATA: times 592    db 0
-findHandle:             dd 0
-counter:                dd COUNT
-currentPath: times 260  db 0
-searchPath: times 260   db 0
-
-startingPath:           db "C:\Program Files (x86)", 0  ; must be fixed when ported
+    startingPath: db "C:\Program Files (x86)", 0  ; must be fixed when ported
 
 section .text
 CMAIN:
-    mov     ebp, esp
-    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    
+    ; create stack frame for the local variables
+    push    ebp                                 ; save old ebp
+    sub     esp, DATA.size                      ; allocate local variables
+    mov     ebp, esp                            ; set ebp for variable indexing
+
+    ; initialize local variables    
+    mov     [ebp + DATA.fileMask], dword 0x2A2E2A5C ; "\*.*"
+    mov     [ebp + DATA.fileMask + 4], byte 0 ; 0 terminator
+    mov     [ebp + DATA.backslash], word 0x005C ; "\"    
+    mov     [ebp + DATA.counter], dword COUNT
+
+    ; push initial path onto the stack
     sub     esp, MAX_PATH_LENGTH
     mov     ebx, esp
     push    startingPath
@@ -45,59 +52,71 @@ CMAIN:
 next_dir:
     cmp     ebp, esp            ; must be fixed when ported
     je      exit
-
+    
     push    esp                 ; pop path off the stack
-    push    currentPath
+    lea     edx, [ebp + DATA.currentPath]
+    push    edx
     call    _lstrcpy@8
     add     esp, MAX_PATH_LENGTH
-    ;PRINTS  "currentPath", currentPath
+    ;PRINTS  "currentPath", [ebp + DATA.currentPath]
     
-    push    currentPath         ; copy currentPath into searchPath
-    push    searchPath
+    lea     edx, [ebp + DATA.currentPath]   ; copy currentPath into searchPath
+    push    edx
+    lea     edx, [ebp + DATA.searchPath] 
+    push    edx
     call    _lstrcpy@8
+    ;PRINTS  "searchPath", [ebp + DATA.searchPath]
     
-    push    fileMask            ; append the file mask
-    push    searchPath
+    lea     edx, [ebp + DATA.fileMask]            ; append the file mask
+    push    edx
+    lea     edx, [ebp + DATA.searchPath]
+    push    edx
     call    _lstrcat@8
-    ;PRINTS  "searchPath", searchPath
-    ;NEWLINE
+    ;PRINTS  "searchPath", [ebp + DATA.searchPath]
     
-    push    FIND_DATA           ; find the first file
-    push    searchPath
+    lea     edx, [ebp + DATA.findData]           ; find the first file
+    push    edx
+    lea     edx, [ebp + DATA.searchPath]
+    push    edx
     call    _FindFirstFileA@8
     cmp     eax, -1             ; invalid handle? 
-    je      close_search        ; then error and close_search
-    mov     [findHandle], eax
+    je      next_dir            ; no need to close the search, just move on
+    mov     [ebp + DATA.findHandle], eax
     jmp     process_file        ; else process the file
     
 next_file:
-    push    FIND_DATA
-    mov     eax, [findHandle]
+    lea     edx, [ebp + DATA.findData]
+    push    edx
+    mov     eax, [ebp + DATA.findHandle]
     push    eax
     call    _FindNextFileA@8
     cmp     eax, 0
     je      close_search
     
 process_file:
-    ;PRINTS "fileName", [FIND_DATA + 44]
     ; skip '.' and '..' directories
-    cmp     word [FIND_DATA + 44], word 0x002e
+    cmp     word [ebp + DATA.findData + FIND_DATA.cFileName], word 0x002e
     je      next_file
-    cmp     word [FIND_DATA + 44], word 0x2e2e
+    cmp     word [ebp + DATA.findData + FIND_DATA.cFileName], word 0x2e2e
     je      next_file
     
-    push    currentPath         ; get file absolute path
-    push    searchPath
+    lea     edx, [ebp + DATA.currentPath]         ; get file absolute path
+    push    edx
+    lea     edx, [ebp + DATA.searchPath]
+    push    edx
     call    _lstrcpy@8
-    push    backslash
-    push    searchPath
+    lea     edx, [ebp + DATA.backslash]
+    push    edx
+    lea     edx, [ebp + DATA.searchPath]
+    push    edx
     call    _lstrcat@8
-    lea     eax, [FIND_DATA + 44]
-    push    eax
-    push    searchPath
+    lea     edx, [ebp + DATA.findData + FIND_DATA.cFileName]
+    push    edx
+    lea     edx, [ebp + DATA.searchPath]
+    push    edx
     call    _lstrcat@8
     
-    mov     eax, [FIND_DATA + 0]
+    mov     eax, [ebp + DATA.findData + FIND_DATA.dwFileAttributes]
     and     eax, DIRECTORY 
     cmp     eax, DIRECTORY      ; directory?
     je      dir                 ; then its a dir
@@ -105,45 +124,54 @@ process_file:
     ; else its a file and check if exe
     xor     eax, eax
 loop_findTermination:
-    mov     bl, byte [FIND_DATA + 44 + eax]
+    mov     bl, byte [ebp + DATA.findData + FIND_DATA.cFileName + eax]
     cmp     bl, 0
-    je      compareEXE
-    
+    je      compareEXE    
     inc     eax
-    jmp     loop_findTermination
+    jmp     loop_findTermination    
     
 compareEXE:
     mov     ebx, dword ".exe"
-    mov     ecx, dword [FIND_DATA + 44 + eax - 4]    
+    mov     ecx, dword [ebp + DATA.findData + FIND_DATA.cFileName + eax - 4]    
     cmp     ebx, ecx   
     jne     next_file
 
     ;;;;; IF FILE AND EXE, THEN INFECT ;;;;;
-    PRINTS  "FILE", searchPath
-    dec     dword [counter]
+    PRINTS  "FILE", [ebp + DATA.searchPath]
+    
+    dec     dword [ebp + DATA.counter]      ; decrement counter and loop again
     jz      exit
     jmp     next_file
     
 dir:
     sub     esp, MAX_PATH_LENGTH
     mov     ebx, esp
-    push    searchPath
+    lea     edx, [ebp + DATA.searchPath]
+    push    edx
     push    ebx
     call    _lstrcpy@8
     jmp     next_file
     
 close_search:
-    mov     eax, [findHandle]
+    ;findData "closeSearch", [ebp + DATA.currentPath]
+    mov     eax, [ebp + DATA.findHandle]
     push    eax
     call    _FindClose@4
     jmp     next_dir
 
 exit:
     mov     eax, COUNT
-    sub     eax, [counter]
+    sub     eax, [ebp + DATA.counter]
     NEWLINE
     PRINTD "counter", eax
     
+    add     esp, DATA.size                  ; de-allocate local variables
+    pop     ebp                             ; restore stack
+
+end:
+
     push    0
     call    _ExitProcess@4
+    
+
     

