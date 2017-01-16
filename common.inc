@@ -23,6 +23,9 @@ EXECUTABLE      equ 0x20000000
 READABLE        equ 0x40000000
 WRITABLE        equ 0x80000000
 
+MAX_PATH_LENGTH     equ 260
+DIRECTORY           equ 10h
+
 extern  _ExitProcess@4
 
 %macro PRINTS 2
