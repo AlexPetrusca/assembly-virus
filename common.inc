@@ -27,6 +27,7 @@ MAX_PATH_LENGTH     equ 260
 DIRECTORY           equ 10h
 
 extern  _ExitProcess@4
+extern  _GetLastError@0
 
 %macro PRINTS 2
     %if DEBUG
@@ -74,15 +75,15 @@ extern  _ExitProcess@4
 
 %macro PRINT_TRACE 0
     %if DEBUG
-;        pushad
-;        PRINT_DEC    4, [counter]
-;        PRINT_STRING ": "
-;        PRINT_HEX    4, esp
-;        PRINT_STRING "  "
-;        PRINT_HEX    4, eax
-;        NEWLINE
-;        inc dword[counter]
-;        popad
+        pushad
+        PRINT_DEC    4, [counter]
+        PRINT_STRING ": "
+        PRINT_HEX    4, esp
+        PRINT_STRING "  "
+        PRINT_HEX    4, eax
+        NEWLINE
+        inc dword[counter]
+        popad
     %endif
 %endmacro
 
