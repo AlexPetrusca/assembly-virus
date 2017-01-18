@@ -2,8 +2,6 @@
 %include "./common.inc"
 
 COUNT               equ 100000
-MAX_PATH_LENGTH     equ 260
-DIRECTORY           equ 10h
 
 global CMAIN
 extern  _FindFirstFileA@8

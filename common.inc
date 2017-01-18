@@ -1,4 +1,5 @@
-%define DEBUG       1
+%define DEBUG       0
+%define USE_NOPS    0
 
 NULL            equ 0
 
@@ -19,15 +20,17 @@ JMP_NR_BYTES    equ 5
 
 ; segment characteristics
 CODE            equ 0x00000020
-EXECUTABLE      equ 0x20000000
-READABLE        equ 0x40000000
-WRITABLE        equ 0x80000000
+GENERIC_READ	equ			0x80000000
+GENERIC_WRITE	equ			0x40000000
+GENERIC_EXECUTE equ			0x20000000
 
 MAX_PATH_LENGTH     equ 260
 DIRECTORY           equ 10h
 
 extern  _ExitProcess@4
 extern  _GetLastError@0
+extern  _SetCurrentDirectoryA@4
+extern  _CreateFileMappingA@24
 
 %macro PRINTS 2
     %if DEBUG
@@ -75,55 +78,57 @@ extern  _GetLastError@0
 
 %macro PRINT_TRACE 0
     %if DEBUG
-        pushad
-        PRINT_DEC    4, [counter]
-        PRINT_STRING ": "
-        PRINT_HEX    4, esp
-        PRINT_STRING "  "
-        PRINT_HEX    4, eax
-        NEWLINE
-        inc dword[counter]
-        popad
+;        pushad
+;        PRINT_DEC    4, [counter]
+;        PRINT_STRING ": "
+;        PRINT_HEX    4, esp
+;        PRINT_STRING "  "
+;        PRINT_HEX    4, eax
+;        NEWLINE
+;        inc dword[counter]
+;        popad
     %endif
 %endmacro
 
 %macro NOPS 0
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
+    %if USE_NOPS
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+    %endif
 %endmacro
 
 struc OVERLAPPED
