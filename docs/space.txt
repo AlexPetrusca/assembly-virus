@@ -1,0 +1,10 @@
+- use a register to store 0 and use it to pass 0 parameters to methods!
+- for loading small values in a register use:
+    push  byte 13 ; takes 3 bytes
+    pop   eax
+- RIP-relative memory operand
+	default rel
+	mov eax, [mem]
+- XCHG EAX,reg32 takes only 1 byte
+- The following instructions take one byte less when they use the accumulator than when they use any other register: ADD, ADC, SUB, SBB, AND, OR, XOR, CMP, TEST with an immediate operand without sign extension
+
