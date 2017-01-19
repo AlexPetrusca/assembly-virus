@@ -8,4 +8,5 @@
 - XCHG EAX,reg32 takes only 1 byte
 - The following instructions take one byte less when they use the accumulator than when they use any other register: ADD, ADC, SUB, SBB, AND, OR, XOR, CMP, TEST with an immediate operand without sign extension
 - overlapping opcodes?
+- use setcc instructions
 

@@ -6,6 +6,11 @@ section .data
 section .text
 global CMAIN
 CMAIN:
+    mov eax, l2-l1
+
+l1:
+    jmp $-10              ; 000C: EB F4
+l2:
 
   mov eax, 0xBBC10300   ; 0000: B8 00 03 C1 BB
   mov ecx, 0x05000000   ; 0005: B9 00 00 00 05
