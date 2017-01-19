@@ -65,31 +65,6 @@ extern  _CreateFileMappingA@24
     %endif
 %endmacro
 
-%macro PRINT_FILE 1
-    %if DEBUG
-        pushad
-        mov dword[counter], 1
-        NEWLINE
-        PRINT_STRING %1
-        NEWLINE
-        popad
-    %endif
-%endmacro
-
-%macro PRINT_TRACE 0
-    %if DEBUG
-;        pushad
-;        PRINT_DEC    4, [counter]
-;        PRINT_STRING ": "
-;        PRINT_HEX    4, esp
-;        PRINT_STRING "  "
-;        PRINT_HEX    4, eax
-;        NEWLINE
-;        inc dword[counter]
-;        popad
-    %endif
-%endmacro
-
 %macro NOPS 0
     %if USE_NOPS
         nop
