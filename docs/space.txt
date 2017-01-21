@@ -8,5 +8,10 @@
 - XCHG EAX,reg32 takes only 1 byte
 - The following instructions take one byte less when they use the accumulator than when they use any other register: ADD, ADC, SUB, SBB, AND, OR, XOR, CMP, TEST with an immediate operand without sign extension
 - overlapping opcodes?
-- use setcc instructions
+- use conditional setcc/cmov instructions
+- To detect a debugger
+	mov eax, large fs:30h           ; PEB saved to EAX
+	mov eax, dword ptr [eax+18h]    ; ProcessHeap (offset 0x18 relative to PEB) saved to EAX
+	cmp dword ptr ds:[eax+10h], 0   ; Check whether ForceFlags field (offset 0x10 relative to ProcessHeap) is 0
+	jne DebuggerDetected            ; If previous test returned non zero, debugger is present
 
